@@ -38,7 +38,9 @@ var SEL = {
   depositGas: "0xae9bb692",
   withdrawGas: "0x91657544",
   gasCredit: "0x894912ac",
-  gasStipend: "0x9434c910"
+  gasStipend: "0x9434c910",
+  usersCount: "0x6ba13a82",
+  userAt: "0x598a96bf"
 };
 
 /* Target candidates: the Don't Panic token list (FISH itself excluded —
@@ -186,7 +188,20 @@ var I18N = {
     myDetail: "{percent}% of the morning FISH · daily limit {cap} FISH",
     myLoading: "Checking…",
     myLoadFailed: "Could not read your status. Please tap “Check again” in a little while.",
-    nativeSymbol: "[42]"
+    nativeSymbol: "[42]",
+    boardTitle: "Registered addresses",
+    boardTitleCount: "Registered addresses ({n})",
+    boardNote: "Everyone registered for the morning auto-swap, read straight from the contract — anyone can check this list.",
+    boardRefresh: "Refresh",
+    boardLoading: "Loading…",
+    boardEmpty: "No registrations yet",
+    boardFailed: "Could not load the list. Please tap Refresh in a little while.",
+    boardRoute: "FISH → {symbol}",
+    boardShare: "share {percent}%",
+    boardActive: "Active",
+    boardPaused: "Paused",
+    boardYou: "You",
+    boardMore: "Showing the newest {shown} of {n} registrations."
   },
   ja: {
     pageTitle: "FISH オートスワップ 🐟",
@@ -310,7 +325,20 @@ var I18N = {
     myDetail: "割合 {percent}% ・ 1日上限 {cap} FISH",
     myLoading: "確認しています…",
     myLoadFailed: "状態を読み取れませんでした。少し待ってから「もう一度調べる」を押してください。",
-    nativeSymbol: "[42]"
+    nativeSymbol: "[42]",
+    boardTitle: "登録済みアドレス",
+    boardTitleCount: "登録済みアドレス（{n}件）",
+    boardNote: "毎朝の自動交換に登録しているアドレスの一覧です。コントラクトから直接読み取っているので、誰でも確認できます。",
+    boardRefresh: "更新",
+    boardLoading: "読み込んでいます…",
+    boardEmpty: "まだ登録がありません",
+    boardFailed: "一覧を読み込めませんでした。少し待ってから「更新」を押してください。",
+    boardRoute: "FISH → {symbol}",
+    boardShare: "割合 {percent}%",
+    boardActive: "有効",
+    boardPaused: "停止中",
+    boardYou: "あなた",
+    boardMore: "全 {n} 件のうち、最新の {shown} 件を表示しています。"
   }
 };
 
@@ -396,6 +424,40 @@ async function rpc(method, params) {
   throw lastErr || new Error("all RPC endpoints failed");
 }
 async function ethCall(to, data) { return rpc("eth_call", [{ to: to, data: data }, "latest"]); }
+function ethCallReq(to, data) {
+  return { method: "eth_call", params: [{ to: to, data: data }, "latest"] };
+}
+/* Batched JSON-RPC: many calls in one HTTP round-trip, results aligned
+   with the request order. Throws if any item fails, so callers can
+   show an honest error state instead of a half-filled list. */
+async function rpcBatch(calls) {
+  var lastErr = null;
+  for (var i = 0; i < RPCS.length; i++) {
+    try {
+      var base = rpcId;
+      var payload = calls.map(function (c, j) {
+        return { jsonrpc: "2.0", id: base + j, method: c.method, params: c.params };
+      });
+      rpcId += calls.length;
+      var res = await fetch(RPCS[i], {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      var data = await res.json();
+      if (!Array.isArray(data)) throw new Error("bad batch response");
+      var byId = {};
+      data.forEach(function (d) { byId[d.id] = d; });
+      return payload.map(function (p) {
+        var d = byId[p.id];
+        if (!d) throw new Error("missing batch item");
+        if (d.error) throw new Error(d.error.message || "rpc error");
+        return d.result;
+      });
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error("all RPC endpoints failed");
+}
 async function tokenBalance(token, addr) {
   var out = await ethCall(token, SEL.balanceOf + encodeAddress(addr));
   var v = decodeUint(out);
@@ -537,6 +599,9 @@ function applyI18n() {
   setText("nextRunLabel", "nextRunLabel");
   setText("statusScope", "statusScope");
   setText("myStatusTitle", "myStatusTitle");
+  setText("boardTitle", "boardTitle");
+  setText("boardNote", "boardNote");
+  setText("boardRefreshBtn", "boardRefresh");
   setText("noWalletTitle", "noWalletTitle");
   setText("noWalletText", "noWalletText");
   setText("connectBtn", "connectBtn");
@@ -938,6 +1003,121 @@ async function renderMyStatus() {
   }
 }
 
+/* ---------- registered addresses board (public — no wallet needed) ----------
+   Enumerates the contract's own users list (usersCount / userAt /
+   configOf) in batched RPC calls and renders one row per registered
+   address. At most the newest BOARD_MAX rows are rendered, so the RPC
+   fan-out stays bounded no matter how many users register. */
+var BOARD_MAX = 100;
+var BOARD_CHUNK = 40;
+
+async function boardSymbol(address) {
+  if (!address || address === ZERO_ADDRESS) return t("nativeSymbol");
+  var a = address.toLowerCase();
+  for (var i = 0; i < TOKENS.length; i++) {
+    if (TOKENS[i].address === a) return TOKENS[i].symbol;
+  }
+  return resolveTargetSymbol(a);
+}
+
+function boardRow(row) {
+  var div = document.createElement("div");
+  div.className = "board-row";
+  var me = account && row.user === String(account).toLowerCase();
+  if (me) div.className += " me";
+  var a = document.createElement("a");
+  a.className = "mono";
+  a.href = EXPLORER + "/address/" + row.user;
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.textContent = row.user.slice(0, 6) + "…" + row.user.slice(-4);
+  div.appendChild(a);
+  var chip = document.createElement("span");
+  chip.className = "board-chip";
+  chip.textContent = t("boardRoute", { symbol: row.symbol });
+  div.appendChild(chip);
+  var meta = document.createElement("span");
+  meta.className = "board-meta";
+  var st = document.createElement("span");
+  st.className = row.cfg.enabled ? "board-on" : "board-off";
+  st.textContent = row.cfg.enabled ? t("boardActive") : t("boardPaused");
+  meta.appendChild(st);
+  meta.appendChild(document.createTextNode(
+    " · " + t("boardShare", { percent: (Number(row.cfg.percentBps) / 100).toString() })
+  ));
+  div.appendChild(meta);
+  if (me) {
+    var badge = document.createElement("span");
+    badge.className = "you-badge";
+    badge.textContent = t("boardYou");
+    div.appendChild(badge);
+  }
+  return div;
+}
+
+function boardMessage(key) {
+  var p = document.createElement("p");
+  p.className = "note";
+  p.textContent = t(key);
+  return p;
+}
+
+async function loadBoard() {
+  var list = el("boardList");
+  if (!list) return;
+  var more = el("boardMore");
+  more.textContent = "";
+  list.innerHTML = "";
+  list.appendChild(boardMessage("boardLoading"));
+  try {
+    if (!ready) throw new Error("contract not set");
+    var countOut = await ethCall(CONFIG.CONTRACT_ADDRESS, SEL.usersCount);
+    var total = Number(decodeUint(countOut) || 0n);
+    el("boardTitle").textContent = t("boardTitleCount", { n: total });
+    if (total === 0) {
+      list.innerHTML = "";
+      list.appendChild(boardMessage("boardEmpty"));
+      return;
+    }
+    var shown = Math.min(total, BOARD_MAX);
+    var idx = [];
+    for (var k = total - 1; k >= total - shown; k--) idx.push(k);
+    var addrWords = [];
+    for (var b = 0; b < idx.length; b += BOARD_CHUNK) {
+      var chunk = idx.slice(b, b + BOARD_CHUNK).map(function (i) {
+        return ethCallReq(CONFIG.CONTRACT_ADDRESS, SEL.userAt + encodeUint(i));
+      });
+      addrWords = addrWords.concat(await rpcBatch(chunk));
+    }
+    var users = addrWords.map(function (h) { return h ? decodeAddressWord(h.slice(2)) : null; });
+    var cfgHexes = [];
+    for (var c = 0; c < users.length; c += BOARD_CHUNK) {
+      var chunk2 = users.slice(c, c + BOARD_CHUNK).map(function (u) {
+        return ethCallReq(CONFIG.CONTRACT_ADDRESS, SEL.configOf + encodeAddress(u));
+      });
+      cfgHexes = cfgHexes.concat(await rpcBatch(chunk2));
+    }
+    var rows = await Promise.all(users.map(async function (u, i) {
+      var cfg = u ? decodeConfig(cfgHexes[i]) : null;
+      if (!u || !cfg || !cfg.registered) return null;
+      return { user: u, cfg: cfg, symbol: await boardSymbol(cfg.targetToken) };
+    }));
+    rows = rows.filter(function (r) { return r !== null; });
+    list.innerHTML = "";
+    if (rows.length === 0) {
+      list.appendChild(boardMessage("boardEmpty"));
+      return;
+    }
+    rows.forEach(function (row) { list.appendChild(boardRow(row)); });
+    if (total > shown) more.textContent = t("boardMore", { shown: shown, n: total });
+  } catch (e) {
+    /* Honest failure state — never fabricate rows. */
+    el("boardTitle").textContent = t("boardTitle");
+    list.innerHTML = "";
+    list.appendChild(boardMessage("boardFailed"));
+  }
+}
+
 /* ---------- events ---------- */
 function init() {
   applyI18n();
@@ -946,6 +1126,8 @@ function init() {
   el("statusText").textContent = t("statusChecking");
   loadServiceStatus();
   setInterval(loadServiceStatus, 60000);
+  loadBoard();
+  el("boardRefreshBtn").addEventListener("click", loadBoard);
 
   el("langSel").addEventListener("change", function () {
     try { localStorage.setItem("fishautoswap_lang", this.value); } catch (e) {}
@@ -1149,6 +1331,7 @@ function init() {
       account = accs && accs[0] ? accs[0] : null;
       if (account) showAccount();
       else el("myStatusPanel").hidden = true;
+      loadBoard();
     });
     window.ethereum.on("chainChanged", function () { location.reload(); });
   }
@@ -1198,6 +1381,7 @@ function showAccount() {
   el("myStatusDetail").textContent = "";
   el("myStatusNote").hidden = true;
   loadOnChain();
+  loadBoard();
 }
 
 document.addEventListener("DOMContentLoaded", init);

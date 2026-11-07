@@ -56,6 +56,17 @@ main { padding-bottom: 8px; }
 .cfg-row:first-child { border-top: 0; }
 .cfg-label { color: #5b7a8c; }
 .cfg-value { font-weight: 800; text-align: right; word-break: break-all; }
+.board-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.board-head h2 { margin: 0; }
+.board-head .small-btn { min-height: 40px; padding: 8px 14px; }
+.board-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 8px; border-top: 1px solid #e3f0f8; font-size: 14px; margin: 0 -8px; }
+.board-row .mono { font-size: 14px; }
+.board-chip { background: #e0f2fe; border: 1px solid #bae6fd; color: #0369a1; border-radius: 999px; padding: 4px 12px; font-size: 13px; font-weight: 800; white-space: nowrap; }
+.board-meta { margin-left: auto; color: #5b7a8c; font-size: 13px; white-space: nowrap; }
+.board-on { color: #15803d; font-weight: 800; }
+.board-off { color: #b45309; font-weight: 800; }
+.board-row.me { background: #f0fdf4; border-radius: 10px; }
+.you-badge { background: #16a34a; color: #fff; border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 800; white-space: nowrap; }
 .hist-item { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 12px 0; border-top: 1px solid #e3f0f8; font-size: 14px; }
 .hist-item:first-child { border-top: 0; }
 .notes { color: #3c5566; line-height: 1.8; font-size: 13px; padding-left: 18px; margin: 0; }

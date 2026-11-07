@@ -31,6 +31,7 @@
 - コンパイル成功（contracts/build/FishAutoSwap.json、バイトコード 8,842 bytes）
 - ローカル EVM（ganache、モックを実アドレスに配置）スモークテスト **49項目すべて合格**: 登録→実行（トークン/ネイティブ）、割合・上限の効き方、同日2回目の revert、keeper 以外の revert、disable / pause、経路検証、allowance 0 の revert、翌日の再実行可、＋ガス預かり方式（入金で残高増、実行で stipend ちょうどがキーパーへ＆残高減、残高ゼロ/不足で revert・課金なし、失敗スワップで課金なし、出金は本人の分のみ・超過 revert、他人の預かり金に届かない、setGasStipend の owner 限定と上限キャップ、最終残高＝残り預かり合計と一致）
 - サイト読み取り検証: todaysDrop がエクスプローラーの実績値と完全一致（2026-11-07、0.791531300645460722 FISH）
+- 登録済みアドレスボード（2026-11-08 追加）: ステータス表示の下に公開ボードを追加。コントラクトの users リスト（usersCount/userAt/configOf）をバッチ RPC で列挙し、全登録者のアドレス（エクスプローラーへのリンク）・交換先チップ「FISH → {symbol}」・有効/停止中・割合を表示。ウォレット未接続でも表示され、接続中アドレスは「あなた」バッジ付きでハイライト。100件超は最新100件＋総件数注記。`node tools/verify-board.mjs` で実チェーン（登録1件: 0xa33e…3a23 → QOM、有効、100%）と描画結果（日英）の一致を検証済み
 - Worker ローカル検証: 空 env で /status=not_ready、/run=403、scheduled が例外なく安全終了。再デプロイ後も /status=not_ready を実確認
 - メインネットへのデプロイはしていない（オーナーが admin.html から実施）
 
