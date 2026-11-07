@@ -17,8 +17,16 @@ pragma solidity ^0.8.20;
 ///    2- or 3-hop path validated on-chain (FISH first, your target
 ///    last, every hop's pair must exist).
 ///  - The keeper can only call `execute` (at most once per user per
-///    UTC day). The owner can only set the keeper and pause/unpause.
-///  - There is NO withdraw function at all. Nothing can be taken out.
+///    UTC day). The owner can only set the keeper, the gas stipend
+///    (hard-capped) and pause/unpause.
+///  - Execution gas is paid by each user themselves: users pre-deposit
+///    a little native [42] as `gasCredit`. A successful `execute`
+///    moves exactly `gasStipend` of the CALLER's own credit to the
+///    keeper; a failed swap charges nothing. Unused credit can be
+///    withdrawn by its owner — and only its owner — at any time via
+///    `withdrawGas`. There is NO general withdraw function: nobody,
+///    including the owner and the keeper, can take another user's
+///    credit or any FISH beyond the swap rules above.
 ///
 /// Native [42] convention:
 ///  - In a stored config, `targetToken == address(0)` means the native
@@ -74,6 +82,18 @@ contract FishAutoSwap {
     uint256 public constant MAX_SLIPPAGE_BPS = 5000; // 50%
     uint256 private constant BPS = 10000;
 
+    // ---- Gas pre-deposit (each user pays their own execution gas) ----
+    /// @notice Per-user prepaid native [42] for execution gas. Only the
+    ///         user themselves can add to or withdraw their own credit;
+    ///         a successful execute() moves exactly `gasStipend` of it
+    ///         to the keeper. See depositGas / withdrawGas.
+    mapping(address => uint256) public gasCredit;
+    /// @notice Fixed per-execution gas reimbursement, in wei of [42].
+    ///         Default 0.005 [42] (a real run costs ~0.0014-0.002).
+    uint256 public gasStipend = 0.005 ether;
+    /// @notice Hard cap for gasStipend; the owner can never set more.
+    uint256 public constant MAX_GAS_STIPEND = 0.02 ether;
+
     // ---- Roles ----
     address public owner;
     address public keeper;
@@ -125,6 +145,10 @@ contract FishAutoSwap {
     );
     event KeeperChanged(address indexed oldKeeper, address indexed newKeeper);
     event PausedChanged(bool paused);
+    event GasDeposited(address indexed user, uint256 amount, uint256 newCredit);
+    event GasWithdrawn(address indexed user, uint256 amount, uint256 newCredit);
+    event GasPaid(address indexed user, address indexed keeper, uint256 stipend);
+    event GasStipendChanged(uint256 oldStipend, uint256 newStipend);
 
     constructor() {
         owner = msg.sender;
@@ -141,6 +165,39 @@ contract FishAutoSwap {
     function setPaused(bool _paused) external onlyOwner {
         paused = _paused;
         emit PausedChanged(_paused);
+    }
+
+    /// @notice Set the per-execution gas reimbursement. Hard-capped at
+    ///         MAX_GAS_STIPEND (0.02 [42]) so it can never be raised
+    ///         beyond a small, site-displayed amount.
+    function setGasStipend(uint256 newStipend) external onlyOwner {
+        require(newStipend <= MAX_GAS_STIPEND, "FishAutoSwap: stipend above hard cap");
+        emit GasStipendChanged(gasStipend, newStipend);
+        gasStipend = newStipend;
+    }
+
+    // ---- Gas pre-deposit: each user funds their own executions ----
+    /// @notice Deposit native [42] as your own gas credit. The deposit
+    ///         is only ever used to pay `gasStipend` to the keeper
+    ///         after one of YOUR successful daily swaps, and you can
+    ///         withdraw whatever is left at any time.
+    function depositGas() external payable {
+        require(msg.value > 0, "FishAutoSwap: deposit is zero");
+        gasCredit[msg.sender] += msg.value;
+        emit GasDeposited(msg.sender, msg.value, gasCredit[msg.sender]);
+    }
+
+    /// @notice Withdraw your OWN unused gas credit. This function can
+    ///         only ever return the caller's own deposits — there is
+    ///         no way to name another user, and neither the owner nor
+    ///         the keeper has any function that touches credits.
+    function withdrawGas(uint256 amount) external nonReentrant {
+        require(amount > 0, "FishAutoSwap: amount is zero");
+        require(amount <= gasCredit[msg.sender], "FishAutoSwap: amount exceeds your gas credit");
+        gasCredit[msg.sender] -= amount;
+        (bool ok, ) = payable(msg.sender).call{value: amount}("");
+        require(ok, "FishAutoSwap: gas withdraw failed");
+        emit GasWithdrawn(msg.sender, amount, gasCredit[msg.sender]);
     }
 
     // ---- User registration ----
@@ -225,6 +282,11 @@ contract FishAutoSwap {
         uint256 amountIn = _amountIn(user, cfg, grossMintToday);
         require(amountIn > 0, "FishAutoSwap: nothing to swap");
 
+        // The user pays their own execution gas from prepaid credit.
+        // Checked up front, but charged only after the swap succeeds —
+        // a reverted swap never costs the user anything here.
+        require(gasCredit[user] >= gasStipend, "FishAutoSwap: insufficient gas credit");
+
         _validatePath(cfg.targetToken, path);
 
         uint256[] memory amounts = ROUTER.getAmountsOut(amountIn, path);
@@ -235,6 +297,16 @@ contract FishAutoSwap {
         lastExecutedDay[user] = today;
 
         uint256 amountOut = _swap(user, cfg.targetToken, amountIn, amountOutMin, path);
+
+        // Swap succeeded: pay exactly gasStipend of the user's own
+        // credit to the keeper (msg.sender) who paid this run's gas.
+        uint256 stipend = gasStipend;
+        if (stipend > 0) {
+            gasCredit[user] -= stipend;
+            (bool ok, ) = payable(msg.sender).call{value: stipend}("");
+            require(ok, "FishAutoSwap: gas payment failed");
+            emit GasPaid(user, msg.sender, stipend);
+        }
         emit Executed(user, cfg.targetToken, amountIn, amountOut, path.length, block.timestamp);
     }
 

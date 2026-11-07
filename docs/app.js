@@ -34,7 +34,11 @@ var SEL = {
   register: "0x3a774b48",
   disable: "0x2f2770db",
   configOf: "0x19091452",
-  executedToday: "0x59a2398c"
+  executedToday: "0x59a2398c",
+  depositGas: "0xae9bb692",
+  withdrawGas: "0x91657544",
+  gasCredit: "0x894912ac",
+  gasStipend: "0x9434c910"
 };
 
 /* Target candidates: the Don't Panic token list (FISH itself excluded —
@@ -65,7 +69,7 @@ var I18N = {
     pageSub: "Your morning FISH, swapped for you at 09:10",
     howTitle: "How it works — 3 easy steps",
     step1: "Every morning around 09:06 (Japan time), FISH arrives in your wallet — the reward for providing liquidity or locking TOWEL",
-    step2: "Register once on this page: pick the token you want, how much of the FISH, and a daily limit",
+    step2: "Register once on this page: pick the token you want, how much of the FISH, and a daily limit — and deposit a little [42] to cover the morning runs' network fees",
     step3: "Every morning at 09:10, that day's FISH is swapped automatically. The new token comes straight into your wallet",
     howNote: "Only the FISH that arrived that morning is swapped — FISH you already had is not touched. Swapping uses the usual Don't Panic / Nutri-Matic pools on 42 Chain.",
     clockTitle: "Today's schedule (Japan time)",
@@ -114,6 +118,18 @@ var I18N = {
     approveBtn: "Approve",
     stepRegisterTitle: "Step ② — Register",
     registerBtn: "Register / Update settings",
+    stepGasTitle: "Step ③ — Deposit gas money ([42])",
+    gasNote: "Each morning run needs a little of the chain's own coin, [42], as its network fee. You pay it yourself, in advance: deposit a small amount here, and each successful run takes exactly the per-run amount below from your deposit and gives it to the helper program (the keeper) that sent the swap. A run that does not happen takes nothing. Whatever is left is yours — you can take it back at any time below.",
+    gasCreditLabel: "Gas money you have deposited",
+    gasRunsLabel: "That covers about",
+    gasRunsValue: "≈ {runs} runs (about {runs} days)",
+    gasPerRun: "One run costs exactly {amount} [42] from your deposit.",
+    gasWarn: "⚠️ Your gas deposit is below one run's fee, so the auto-swap is paused. Please deposit a little [42].",
+    gasDepositLabel: "Deposit amount ([42])",
+    gasDepositBtn: "Deposit gas money",
+    gasWithdrawLabel: "Take back unused gas money ([42])",
+    gasWithdrawBtn: "Take back",
+    badGasAmount: "Please enter an amount above 0.",
     stopTitle: "Stop the service",
     disableBtn: "Turn OFF auto-swap",
     revokeBtn: "Take back the FISH permission (approve 0)",
@@ -126,14 +142,16 @@ var I18N = {
     trustTitle: "What this service can and cannot do",
     trustCanTitle: "It CAN",
     trustCan1: "Once a day at 09:10, swap the FISH that arrived that morning — only into the token you picked, only the share and up to the daily limit you set",
+    trustCan2: "Pay the morning run's network fee from the [42] you deposited on this page — exactly the one per-run amount, and only after a successful swap",
     trustCannotTitle: "It CANNOT",
     trustCannot1: "Take out or move any of your other tokens — the permission covers FISH only, up to the amount you approved",
     trustCannot2: "Change your chosen token, share, or limit — those are stored under your address and only you can change them",
     trustCannot3: "Keep the swapped tokens — they are sent straight to your wallet",
     trustCannot4: "Run more than once a day for you",
+    trustCannot5: "Touch the [42] you deposited for gas — only you can take it back, and the service operator never pays your gas for you",
     safeTitle: "Please keep this safe",
     safe1: "Never enter your recovery phrase or private key anywhere. This site never asks for it.",
-    safe2: "Each swap is done by a helper program (the “keeper”); it pays its own network fees. You do not need [42] in your wallet for the morning swap itself.",
+    safe2: "The morning swap's network fee is paid from the [42] you deposit in step ③ — exactly the per-run amount shown there, nothing more, and only when a swap succeeds. The operator does not pay it for you. If your deposit runs out, swaps pause until you top it up; unused money can be taken back at any time.",
     safe3: "Amounts are small and pools can be thin, so the received amount moves with the morning's prices. The price-move allowance you set is the limit.",
     contractLine: "FISH: 0x2c32120a12B754272d9E85C57F64b50cA2C43513 · Chain: 42 Chain (421018)",
     contractReadyLine: "AutoSwap contract: {addr}",
@@ -159,7 +177,7 @@ var I18N = {
     pageSub: "毎朝届く FISH を、09:10 に自動で交換します",
     howTitle: "仕組みはかんたん 3ステップ",
     step1: "毎朝 09:06 ごろ（日本時間）、流動性提供や TOWEL ロックの報酬として FISH がウォレットに届きます",
-    step2: "このページで1回だけ登録します。もらいたいトークン、交換する割合、1日の上限を決めます",
+    step2: "このページで1回だけ登録します。もらいたいトークン、交換する割合、1日の上限を決めて、朝の実行のネットワーク手数料用に [42] を少し預けます",
     step3: "毎朝 09:10 に、その朝届いた FISH が自動で交換され、選んだトークンがそのままあなたのウォレットに入ります",
     howNote: "交換されるのは「その朝届いた FISH」だけです。もともと持っていた FISH には触りません。交換には 42 Chain のいつものプール（Don't Panic / Nutri-Matic）を使います。",
     clockTitle: "今日の予定（日本時間）",
@@ -208,6 +226,18 @@ var I18N = {
     approveBtn: "許可する",
     stepRegisterTitle: "手順 ② — 登録する",
     registerBtn: "登録 / 設定を更新",
+    stepGasTitle: "手順 ③ — ガス代を預ける（[42]）",
+    gasNote: "毎朝の実行には、ネットワーク手数料としてチェーン自体のコイン [42] が少しだけ必要です。その手数料は、あなた自身が前もって払う形です。ここに少額を預けておくと、交換が成功した実行のたびに、下の「1回分」ちょうどが預かりから実行役のプログラム（キーパー）に渡ります。実行されなければ何も引かれません。余った分はあなたのもので、下のボタンからいつでも取り戻せます。",
+    gasCreditLabel: "預けているガス代",
+    gasRunsLabel: "あと約",
+    gasRunsValue: "約 {runs} 回分（約 {runs} 日分）",
+    gasPerRun: "実行1回ごとに、預かりからちょうど {amount} [42] が使われます。",
+    gasWarn: "⚠️ ガス代の預かりが不足しているため、自動交換は止まっています。少し [42] を預けてください。",
+    gasDepositLabel: "預ける量（[42]）",
+    gasDepositBtn: "ガス代を預ける",
+    gasWithdrawLabel: "余ったガス代を取り戻す（[42]）",
+    gasWithdrawBtn: "取り戻す",
+    badGasAmount: "0 より大きい金額を入れてください。",
     stopTitle: "サービスを止める",
     disableBtn: "自動交換を OFF にする",
     revokeBtn: "FISH の許可を取り消す（許可 0）",
@@ -220,14 +250,16 @@ var I18N = {
     trustTitle: "このサービスに「できること」「できないこと」",
     trustCanTitle: "できること",
     trustCan1: "1日1回 09:10 に、その朝届いた FISH を、あなたが選んだトークンへ、あなたが決めた割合・1日の上限の範囲で交換すること",
+    trustCan2: "このページで預けた [42] から、朝の実行のネットワーク手数料を払うこと — 引かれるのは「1回分」ちょうどで、交換が成功したときだけです",
     trustCannotTitle: "できないこと",
     trustCannot1: "あなたの他のトークンを取り出したり動かしたりすること — 許可の対象は FISH だけ、しかも許可した量までです",
     trustCannot2: "交換先・割合・上限を変えること — それらはあなたのアドレスにひも付いて保存され、変えられるのはあなただけです",
     trustCannot3: "交換したトークンを預かること — 交換結果はそのままあなたのウォレットに送られます",
     trustCannot4: "1日に2回以上実行すること",
+    trustCannot5: "ガス代として預けた [42] に触ること — 取り戻せるのはあなただけで、運営者があなたのガス代を肩代わりすることもありません",
     safeTitle: "安全のためのお願い",
     safe1: "復旧フレーズや秘密鍵は、どこにも入力しないでください。このサイトが聞くことは決してありません。",
-    safe2: "毎朝の交換は「キーパー」というお手伝いプログラムが行い、ネットワーク手数料はキーパー側が払います。朝の交換のためにあなたのウォレットに [42] は要りません。",
+    safe2: "朝の交換のネットワーク手数料は、手順③で預けた [42] から払われます。引かれるのはそこに表示される「1回分」ちょうどだけで、交換が成功したときだけです。運営者が肩代わりすることはありません。預かりが無くなると交換は止まりますが、余った分はいつでも取り戻せます。",
     safe3: "金額が小さくプールも薄いため、受け取る量はその朝の相場で変わります。あなたが設定した「価格のブレの許容」が上限です。",
     contractLine: "FISH: 0x2c32120a12B754272d9E85C57F64b50cA2C43513 · チェーン: 42 Chain (421018)",
     contractReadyLine: "オートスワップ用コントラクト: {addr}",
@@ -412,10 +444,15 @@ async function ensureChain() {
     return false;
   }
 }
-async function sendTx(to, data, resultEl) {
+async function sendTx(to, data, resultEl, valueWei) {
   var hash = await window.ethereum.request({
     method: "eth_sendTransaction",
-    params: [{ from: account, to: to, data: data, value: "0x0" }]
+    params: [{
+      from: account,
+      to: to,
+      data: data,
+      value: valueWei ? "0x" + BigInt(valueWei).toString(16) : "0x0"
+    }]
   });
   resultEl.className = "result";
   resultEl.innerHTML = t("waitingTx") + " ";
@@ -491,6 +528,14 @@ function applyI18n() {
   setText("approveBtn", "approveBtn");
   setText("stepRegisterTitle", "stepRegisterTitle");
   setText("registerBtn", "registerBtn");
+  setText("stepGasTitle", "stepGasTitle");
+  setText("gasNote", "gasNote");
+  setText("gasCreditLabel", "gasCreditLabel");
+  setText("gasRunsLabel", "gasRunsLabel");
+  setText("gasDepositLabel", "gasDepositLabel");
+  setText("gasDepositBtn", "gasDepositBtn");
+  setText("gasWithdrawLabel", "gasWithdrawLabel");
+  setText("gasWithdrawBtn", "gasWithdrawBtn");
   setText("stopTitle", "stopTitle");
   setText("disableBtn", "disableBtn");
   setText("revokeBtn", "revokeBtn");
@@ -499,11 +544,13 @@ function applyI18n() {
   setText("trustTitle", "trustTitle");
   setText("trustCanTitle", "trustCanTitle");
   setText("trustCan1", "trustCan1");
+  setText("trustCan2", "trustCan2");
   setText("trustCannotTitle", "trustCannotTitle");
   setText("trustCannot1", "trustCannot1");
   setText("trustCannot2", "trustCannot2");
   setText("trustCannot3", "trustCannot3");
   setText("trustCannot4", "trustCannot4");
+  setText("trustCannot5", "trustCannot5");
   setText("safeTitle", "safeTitle");
   setText("safe1", "safe1");
   setText("safe2", "safe2");
@@ -519,7 +566,7 @@ function applyI18n() {
   buildTargetOptions();
   if (!ready) {
     el("comingSoon").hidden = false;
-    ["approveBtn", "registerBtn", "disableBtn", "revokeBtn"].forEach(function (id) {
+    ["approveBtn", "registerBtn", "disableBtn", "revokeBtn", "gasDepositBtn", "gasWithdrawBtn"].forEach(function (id) {
       el(id).disabled = true;
     });
   }
@@ -605,6 +652,9 @@ async function loadOnChain() {
       var done = await ethCall(CONFIG.CONTRACT_ADDRESS, SEL.executedToday + encodeAddress(account));
       el("executedLine").textContent =
         decodeUint(done) !== 0n ? t("alreadyToday") : t("notYetToday");
+      var creditOut = await ethCall(CONFIG.CONTRACT_ADDRESS, SEL.gasCredit + encodeAddress(account));
+      var stipendOut = await ethCall(CONFIG.CONTRACT_ADDRESS, SEL.gasStipend);
+      renderGas(decodeUint(creditOut), decodeUint(stipendOut));
     } catch (e) {
       el("currentBody").textContent = t("dropFailed");
     }
@@ -663,6 +713,29 @@ function renderConfig(allowance) {
   }
 }
 
+/* Gas credit display. Both values are read live from the contract on
+   every load — the per-run stipend is never a hardcoded constant.
+   runs ~= days, since there is at most one run per day. */
+function renderGas(credit, stipend) {
+  if (credit === null || credit === undefined) return;
+  el("gasCredit").textContent = formatToken(credit) + " [42]";
+  var warn = el("gasWarn");
+  if (stipend && stipend > 0n) {
+    el("gasRuns").textContent = t("gasRunsValue", { runs: (credit / stipend).toString() });
+    el("gasPerRunNote").textContent = t("gasPerRun", { amount: formatToken(stipend) });
+    var low = credit < stipend;
+    warn.hidden = !low;
+    if (low) {
+      warn.className = "result error";
+      warn.textContent = t("gasWarn");
+    }
+  } else {
+    el("gasRuns").textContent = "—";
+    el("gasPerRunNote").textContent = "";
+    warn.hidden = true;
+  }
+}
+
 async function loadHistory() {
   var list = el("histList");
   var note = el("histNote");
@@ -685,13 +758,15 @@ async function loadHistory() {
         d.toLocaleDateString() + " " + d.toLocaleTimeString() + " — " +
         t("histAmount", { amount: rec.amountIn, target: rec.targetSymbol || rec.target });
       if (rec.status && rec.status !== "success") main.textContent += " (" + rec.status + ")";
-      var a = document.createElement("a");
-      a.href = rec.txUrl || (EXPLORER + "/tx/" + rec.txHash);
-      a.target = "_blank";
-      a.rel = "noopener";
-      a.textContent = t("histTx");
       div.appendChild(main);
-      div.appendChild(a);
+      if (rec.txHash) {
+        var a = document.createElement("a");
+        a.href = rec.txUrl || (EXPLORER + "/tx/" + rec.txHash);
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.textContent = t("histTx");
+        div.appendChild(a);
+      }
       list.appendChild(div);
     });
   } catch (e) {
@@ -865,6 +940,49 @@ function init() {
     res.textContent = t("sending");
     try {
       await sendTx(CONFIG.CONTRACT_ADDRESS, SEL.disable, res);
+      loadOnChain();
+    } catch (e) { txError(res, e); }
+  });
+
+  document.querySelectorAll(".chip[data-gas]").forEach(function (chip) {
+    chip.addEventListener("click", function () {
+      el("gasDepositAmount").value = chip.getAttribute("data-gas");
+      document.querySelectorAll(".chip[data-gas]").forEach(function (c) {
+        c.classList.toggle("active", c === chip);
+      });
+    });
+  });
+
+  el("gasDepositBtn").addEventListener("click", async function () {
+    var res = el("gasResult");
+    if (!account) { res.textContent = t("needConnect"); return; }
+    if (!ready) return;
+    var amount = parseToken(el("gasDepositAmount").value);
+    if (amount === null || amount <= 0n) {
+      res.className = "result error";
+      res.textContent = t("badGasAmount");
+      return;
+    }
+    res.textContent = t("sending");
+    try {
+      await sendTx(CONFIG.CONTRACT_ADDRESS, SEL.depositGas, res, amount);
+      loadOnChain();
+    } catch (e) { txError(res, e); }
+  });
+
+  el("gasWithdrawBtn").addEventListener("click", async function () {
+    var res = el("gasResult");
+    if (!account) { res.textContent = t("needConnect"); return; }
+    if (!ready) return;
+    var amount = parseToken(el("gasWithdrawAmount").value);
+    if (amount === null || amount <= 0n) {
+      res.className = "result error";
+      res.textContent = t("badGasAmount");
+      return;
+    }
+    res.textContent = t("sending");
+    try {
+      await sendTx(CONFIG.CONTRACT_ADDRESS, SEL.withdrawGas + encodeUint(amount), res);
       loadOnChain();
     } catch (e) { txError(res, e); }
   });

@@ -11,8 +11,10 @@ A service that swaps the FISH you receive every morning (~09:06 Japan time, the 
 
 1. **配布（09:06 JST）** — FISH は毎朝 00:05 UTC（= 09:05〜09:06 JST）に1回のバッチ mint で配布されます（2026-11-06 / 11-07 の実績をチェーンで確認済み）。
    **The drop (~09:06 JST)** — FISH is distributed once a day in a single batch-mint transaction at ~00:05 UTC (verified on-chain for 2026-11-06 and 2026-11-07).
-2. **登録（1回だけ）** — サイトでウォレットをつなぎ、① FISH の使用許可（approve、上限つき）② 設定の登録（交換先・割合・1日の上限・スリッページ）をチェーン上に置きます。
-   **Register (once)** — On the site you connect your wallet and put two things on-chain: ① a capped FISH allowance (approve) for the contract, ② your settings (target token, percent, daily cap, slippage).
+2. **登録（1回だけ）** — サイトでウォレットをつなぎ、① FISH の使用許可（approve、上限つき）② 設定の登録（交換先・割合・1日の上限・スリッページ）③ ガス代の事前預け（下記）をチェーン上に置きます。
+   **Register (once)** — On the site you connect your wallet and put three things on-chain: ① a capped FISH allowance (approve) for the contract, ② your settings (target token, percent, daily cap, slippage), ③ a small [42] gas pre-deposit (below).
+   **ガス代は本人が事前に預ける方式** — 毎朝の実行のガス代は、利用者本人が [42] をコントラクトに預けて払います。交換が成功した実行のたびに、預かりから「1回分」（`gasStipend`、初期値 0.005 [42]、サイトに実値を表示）ちょうどがキーパーへ渡ります。失敗した実行では何も引かれません。余った預かり金は本人がいつでも全額取り戻せます（`withdrawGas`）。運営者は利用者のガス代を肩代わりしません。
+   **Gas is prepaid by each user** — Every user funds their own morning runs by depositing [42] into the contract. Each *successful* run moves exactly one `gasStipend` (default 0.005 [42]; the live value is read from the contract and shown on the site) from that user's credit to the keeper. A failed run charges nothing. Unused credit is withdrawable by its owner at any time (`withdrawGas`). The operator never pays users' gas.
 3. **自動交換（09:10 JST）** — Cloudflare Worker のキーパーが毎日 00:10 UTC にコントラクトの `execute()` を呼びます。当日 mint された FISH 量はチェーンの Transfer ログ（from = 0x0）から数え、経路は factory で実在確認してから実行します。
    **Auto-swap (09:10 JST)** — A keeper (Cloudflare Worker cron `10 0 * * *`) calls the contract's `execute()` every day at 00:10 UTC. The day's minted amount is measured from Transfer logs (from = the zero address); the path is verified against the factory before sending.
 
@@ -24,7 +26,8 @@ A service that swaps the FISH you receive every morning (~09:06 Japan time, the 
 - 触れるのは、あなたが approve した **FISH だけ**、しかも1日あたり「その日の mint 量 × あなたの割合」「あなたの1日上限」「残高」「残りの許可量」のうち最小のものまで。
 - 交換先はあなたが登録したトークンのみ。経路は 2〜3 ホップで、全ホップのペア実在をコントラクト側でも検証します。スリッページ下限は実行時点のオンチェーン見積もりから計算します。
 - キーパーは `execute()` を呼べるだけです（1ユーザーあたり1日1回まで、コントラクトが強制）。設定の変更も出金もできません。
-- オーナー（デプロイ者）ができるのは `setKeeper` と一時停止だけ。**出金関数は存在しません**。
+- ガス代の預かり金（`gasCredit`）に触れる関数は、本人の入金（`depositGas`）と本人だけの出金（`withdrawGas`、自分の預かり分まで）だけです。他人の預かり金を動かす関数は存在せず、オーナーにもキーパーにもできません。コントラクトから [42] が出るのは「本人の出金」と「成功した実行の stipend（上限 0.02 [42] にハードキャップ、`setGasStipend` はオーナーのみ）」の2通りだけです。
+- オーナー（デプロイ者）ができるのは `setKeeper`、一時停止、`setGasStipend`（上限つき）だけ。**一般的な出金関数は存在しません**。
 - 止め方は即時です: サイトの「OFF」ボタン（`disable()`）と「許可を取り消す」（approve 0）の2段構え。
 
 The contract is deliberately small:
@@ -33,7 +36,8 @@ The contract is deliberately small:
 - It can only ever touch **FISH you approved**, per day at most the minimum of (today's mint × your percent, your daily cap, your balance, your remaining allowance).
 - It only swaps into **the target you registered**, over a validated 2–3 hop path; the minimum output is computed on-chain from the live quote and your slippage setting.
 - The keeper can only trigger `execute()` (the once-per-day rule is enforced by the contract). It cannot change settings or withdraw anything.
-- The owner can only set the keeper and pause. **There is no withdraw function at all.**
+- Gas credits can only be added by their owner (`depositGas`) and withdrawn by their owner (`withdrawGas`, up to their own balance). No function lets anyone — owner and keeper included — touch another user's credit. Native [42] leaves the contract in exactly two ways: a user's own withdrawal, and one `gasStipend` per successful run (owner-settable only up to a hard cap of 0.02 [42]).
+- The owner can only set the keeper, pause, and set the gas stipend within its hard cap. **There is no general withdraw function.**
 - Stopping is immediate: `disable()` on the site, plus revoking the allowance (approve 0).
 
 ## 構成 / Layout
@@ -41,7 +45,7 @@ The contract is deliberately small:
 | パス | 内容 |
 |---|---|
 | `contracts/FishAutoSwap.sol` | 本体コントラクト（Solidity 0.8、外部依存なし） |
-| `contracts/build/FishAutoSwap.json` | コンパイル済み ABI + バイトコード（solc 0.8.38、7,091 bytes） |
+| `contracts/build/FishAutoSwap.json` | コンパイル済み ABI + バイトコード（solc 0.8.38、8,842 bytes） |
 | `worker/worker.js` | キーパー Worker（Cron 00:10 UTC、履歴は KV） |
 | `docs/` | 登録サイト（GitHub Pages、英語デフォルト＋日本語、`admin.html` は管理者のデプロイ用） |
 | `tools/` | コンパイル（`compile.mjs`）、ローカル EVM スモークテスト（`smoke-test.mjs`）、サイト読み取り検証（`verify-site-reads.mjs`） |
@@ -58,8 +62,8 @@ The contract is deliberately small:
    **Configure the worker** — variable `CONTRACT_ADDRESS`, secret `KEEPER_PRIVATE_KEY` (dashboard only — never in chat or GitHub).
 4. **サイトを有効化** — `docs/app.js` の `CONFIG.CONTRACT_ADDRESS` にアドレスを入れて push すると、サイトの「準備中」が外れます。
    **Enable the site** — Put the address into `CONFIG.CONTRACT_ADDRESS` in `docs/app.js` and push.
-5. **確認** — `https://fish-autoswap.nepicobsv.workers.dev/status` が `ready: true` を返せば稼働開始。最初の登録は自分のウォレットで少額設定（上限小さめ）で試すのがおすすめです。
-   **Verify** — `/status` should answer `ready: true`. Do the first registration from your own wallet with a small cap.
+5. **確認** — `https://fish-autoswap.nepicobsv.workers.dev/status` が `ready: true` を返せば稼働開始。最初の登録は自分のウォレットで少額設定（上限小さめ）で試すのがおすすめです。初回登録には手順③のガス代の預け（例: 0.15 [42] で約30回分）も含まれます — 預かりが 1回分（0.005 [42]）未満だと、その利用者の自動交換は止まります（Worker は `skipped_gas_credit` として履歴に残します）。
+   **Verify** — `/status` should answer `ready: true`. Do the first registration from your own wallet with a small cap. The first registration also includes step ③, the gas deposit (0.15 [42] covers ~30 runs). If a user's credit falls below one stipend (0.005 [42]), their runs pause — the keeper logs them as `skipped_gas_credit` instead of sending a reverting transaction.
 
 任意 / Optional: Worker の Secret `RUN_SECRET` を設定すると、`POST /run`（ヘッダー `x-run-secret`）で手動実行テストができます。未設定の間は `/run` は無効です。 Worker の変数 `RPCS`（カンマ区切り）と `FISH_ADDRESS` で RPC と FISH アドレスを上書きできます。
 
@@ -81,11 +85,11 @@ Note: after redeploying, verify in the dashboard that the secrets are still pres
 
 ## テスト / Testing
 
-- コントラクト: `cd tools && npm install && node compile.mjs` でコンパイル。`node smoke-test.mjs` でローカル EVM（ganache）上にモックの FISH / ルーター / ファクトリーを実アドレスへ配置し、登録→実行・1日1回制限・上限・無効化・一時停止・経路検証など21項目を検証済み（全て合格）。
+- コントラクト: `cd tools && npm install && node compile.mjs` でコンパイル。`node smoke-test.mjs` でローカル EVM（ganache）上にモックの FISH / ルーター / ファクトリーを実アドレスへ配置し、登録→実行・1日1回制限・上限・無効化・一時停止・経路検証に加えて、ガス預かり方式の検証（入金で残高が増える／実行で stipend ちょうどがキーパーに渡り残高が減る／残高不足では revert して何も引かれない／失敗したスワップでは引かれない／出金は本人の分だけ・上限超えは revert／他人の預かり金には届かない／stipend の上限キャップ）を含む **49項目すべて合格**。
 - サイト読み取り: `node verify-site-reads.mjs` で「今日の配布」集計がエクスプローラーの実績値と wei 単位で一致することを確認済み。
 - Worker: デプロイ済み。`CONTRACT_ADDRESS` 未設定の間は `/status` が `not_ready` を返し、Cron が来ても何もしません。
 
-- Contract: compile with `node compile.mjs`; `node smoke-test.mjs` runs 21 checks on a local ganache chain with mocks placed at the real mainnet addresses (register → execute, once-per-day gate, cap, disable, pause, path validation — all passing).
+- Contract: compile with `node compile.mjs`; `node smoke-test.mjs` runs **49 checks, all passing**, on a local ganache chain with mocks placed at the real mainnet addresses — register → execute, once-per-day gate, cap, disable, pause, path validation, plus the gas pre-deposit model (deposit credits the exact amount; a successful execute pays exactly one stipend to the keeper and deducts it; insufficient credit reverts and charges nothing; a failed swap charges nothing; withdrawals return only the caller's own credit and cannot exceed it; another user cannot reach your credit; the stipend setter is owner-only and hard-capped).
 - Site reads: `verify-site-reads.mjs` confirmed the "today's drop" total matches the explorer's record to the wei.
 - Worker: deployed; while `CONTRACT_ADDRESS` is unset, `/status` answers `not_ready` and the daily cron does nothing.
 

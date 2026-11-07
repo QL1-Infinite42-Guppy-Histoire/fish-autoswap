@@ -8,11 +8,17 @@
 //      address since 00:00 UTC — that is exactly "today's drop").
 //   2. Build the path: FISH -> target directly if a pair exists, else
 //      FISH -> [42] -> target (checked against the factory).
-//   3. Preflight execute() with eth_call; skip + log when it reverts.
-//   4. Send execute() from the keeper wallet. The CONTRACT enforces
+//   3. Check the user's prepaid gas credit (gasCredit) against the
+//      contract's per-run gasStipend: users pay their own execution
+//      gas. When credit < stipend the user is skipped and logged as
+//      "skipped_gas_credit" — no transaction is sent.
+//   4. Preflight execute() with eth_call; skip + log when it reverts.
+//   5. Send execute() from the keeper wallet. The CONTRACT enforces
 //      the user's registered target / percent / daily cap / slippage,
-//      the one-run-per-day rule, and pays the proceeds straight to the
-//      user. The keeper can never move funds anywhere else.
+//      the one-run-per-day rule, pays the proceeds straight to the
+//      user, and — only after a successful swap — moves exactly
+//      gasStipend of the user's credit to the keeper. The keeper can
+//      never move funds anywhere else.
 //
 // Configuration:
 //   CONTRACT_ADDRESS  (plain variable; empty until the owner deploys
@@ -57,6 +63,8 @@ const AUTO_IFACE = new ethers.Interface([
   "function userAt(uint256) view returns (address)",
   "function configOf(address) view returns (tuple(address targetToken, uint256 percentBps, uint256 dailyCap, uint256 slippageBps, bool enabled, bool registered))",
   "function executedToday(address) view returns (bool)",
+  "function gasCredit(address) view returns (uint256)",
+  "function gasStipend() view returns (uint256)",
   "function keeper() view returns (address)",
   "function paused() view returns (bool)",
   "function execute(address, uint256, address[])",
@@ -284,6 +292,9 @@ async function runAll(env, source) {
     }
     const count = Number(await callUint(env, contract, AUTO_IFACE.encodeFunctionData("usersCount")));
     summary.users = count;
+    // Per-run gas reimbursement, read live from the contract.
+    const stipend = await callUint(env, contract, AUTO_IFACE.encodeFunctionData("gasStipend"));
+    summary.gasStipendWei = stipend.toString();
     const { block: startBlock, dateStr } = await dayStartBlock(env, kv);
     const latest = Number(BigInt(await rpc(env, "eth_blockNumber", [])));
     summary.date = dateStr;
@@ -314,6 +325,36 @@ async function runAll(env, source) {
         const doneOut = await ethCall(env, contract, AUTO_IFACE.encodeFunctionData("executedToday", [user]));
         if (AUTO_IFACE.decodeFunctionResult("executedToday", doneOut)[0]) {
           summary.skipped.push({ user, why: "already executed today" });
+          continue;
+        }
+        // Users pay their own execution gas from prepaid credit. If
+        // the credit cannot cover one stipend, do not even try: the
+        // contract would revert. Skip + log "skipped_gas_credit".
+        const credit = await callUint(env, contract, AUTO_IFACE.encodeFunctionData("gasCredit", [user]));
+        if (credit < stipend) {
+          summary.skipped.push({
+            user,
+            why: "gas credit insufficient",
+            status: "skipped_gas_credit",
+            gasCreditWei: credit.toString(),
+          });
+          if (kv) {
+            const targetSymbol = await tokenSymbol(env, cfg.targetToken);
+            const rec = {
+              date: dateStr,
+              ts: Math.floor(Date.now() / 1000),
+              user,
+              amountIn: "0",
+              amountInWei: "0",
+              target: cfg.targetToken,
+              targetSymbol,
+              txHash: null,
+              status: "skipped_gas_credit",
+            };
+            const key =
+              "hist:" + user.toLowerCase() + ":" + String(rec.ts).padStart(12, "0") + ":nogas";
+            await kv.put(key, JSON.stringify(rec));
+          }
           continue;
         }
         const gross = await sumMintsToday(env, fish, user, startBlock, latest);
@@ -448,7 +489,7 @@ async function handleHistory(env, url) {
     if (!raw) continue;
     try {
       const rec = JSON.parse(raw);
-      items.push({ ...rec, txUrl: EXPLORER_TX + rec.txHash });
+      items.push({ ...rec, txUrl: rec.txHash ? EXPLORER_TX + rec.txHash : null });
     } catch (e) { /* skip corrupt record */ }
   }
   return json({ ok: true, user, total: keys.length, items });
