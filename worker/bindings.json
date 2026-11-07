@@ -1,1 +1,1 @@
-[{"name":"AUTOSWAP_KV","namespace_id":"99ff593a7efb44c59a973b79965575bf","type":"kv_namespace"},{"name":"CONTRACT_ADDRESS","text":"","type":"plain_text"}]
+[{"name": "AUTOSWAP_KV", "namespace_id": "99ff593a7efb44c59a973b79965575bf", "type": "kv_namespace"}, {"name": "CONTRACT_ADDRESS", "text": "0x478bd3bbd12b906a83c803aa6c14684d150ab994", "type": "plain_text"}]
