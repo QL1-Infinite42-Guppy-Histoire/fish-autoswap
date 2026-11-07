@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FISH AutoSwap — for 42 Chain</title>
+<meta name="description" content="The FISH that arrives every morning is swapped automatically at 09:10 Japan time into a token you choose. Register once on 42 Chain.">
+<link rel="stylesheet" href="style.css">
+<script>
+(function () {
+  var lang = null;
+  try { lang = localStorage.getItem("fishautoswap_lang"); } catch (e) {}
+  location.replace((lang === "ja" ? "ja.html" : "en.html") + location.search + location.hash);
+})();
+</script>
+</head>
+<body>
+<header>
+  <h1>🐟 FISH AutoSwap</h1>
+  <p class="sub">Choose your language / 言語を選んでください</p>
+  <p class="sub"><a href="en.html">English</a> ・ <a href="ja.html">日本語</a></p>
+  <noscript><p class="sub">JavaScript is disabled — please use the links above. / JavaScript が無効です。上のリンクからお進みください。</p></noscript>
+</header>
+</body>
+</html>

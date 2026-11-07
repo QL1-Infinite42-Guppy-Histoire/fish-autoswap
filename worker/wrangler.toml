@@ -1,0 +1,26 @@
+# FishAutoSwap keeper worker.
+# The live deployment on this account is done with the Cloudflare API
+# helper (see README "Redeploying the worker"); this file mirrors the
+# same configuration for anyone deploying with wrangler instead.
+name = "fish-autoswap"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# Daily run: 00:10 UTC = 09:10 JST, just after the ~00:05 UTC FISH drop.
+[triggers]
+crons = ["10 0 * * *"]
+
+[vars]
+# Set AFTER the owner deploys the contract via docs/admin.html.
+CONTRACT_ADDRESS = ""
+# Optional overrides (comma-separated RPC list / FISH token address):
+# RPCS = "https://evm-rpc.infinitedrive.xyz,https://evm-rpc-infinite.mschihuahua.org,https://evm-rpc-infinitepanda.xyz"
+# FISH_ADDRESS = "0x2c32120a12B754272d9E85C57F64b50cA2C43513"
+
+# Secrets (wrangler secret put — NEVER commit values):
+#   KEEPER_PRIVATE_KEY   keeper wallet key (required for the run)
+#   RUN_SECRET           optional; enables POST /run for manual tests
+
+[[kv_namespaces]]
+binding = "AUTOSWAP_KV"
+id = "99ff593a7efb44c59a973b79965575bf"

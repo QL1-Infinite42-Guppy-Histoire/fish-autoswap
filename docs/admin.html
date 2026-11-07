@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FishAutoSwap — Owner deploy page</title>
+<meta name="description" content="Owner-only page: deploy the FishAutoSwap contract from your own wallet and set the keeper address.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="brand-emoji">🛠️</span>
+    <div>
+      <h1>FishAutoSwap — Owner</h1>
+      <p class="sub">Deploy the contract from your own wallet / あなたのウォレットからコントラクトをデプロイする管理者専用ページ</p>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="panel warn">
+    <h2>Before you start / 始める前に</h2>
+    <ul class="notes">
+      <li>This page deploys the FishAutoSwap contract. The deploying wallet becomes the contract owner (it can only set the keeper and pause — it can never touch user funds).</li>
+      <li>Deployment costs a small amount of [42] in gas. Make sure the wallet is on 42 Chain (421018).</li>
+      <li>Never enter a seed phrase or private key anywhere — this page never asks for one. デプロイはウォレットの署名だけで行います。</li>
+    </ul>
+  </section>
+
+  <section class="panel" id="connectPanel">
+    <div id="connectBox">
+      <button type="button" id="connectBtn" class="big-btn">Connect wallet</button>
+      <p class="note">We only read your public address until you press Deploy.</p>
+    </div>
+    <div id="accountBox" hidden>
+      <div class="i-label">Your wallet (deployer / owner)</div>
+      <div class="mono" id="walletAddr">—</div>
+      <div class="row">
+        <button type="button" id="switchChainBtn" class="small-btn" hidden>Switch to 42 Chain</button>
+      </div>
+    </div>
+    <p class="result" id="connectResult" role="status"></p>
+  </section>
+
+  <section class="panel" id="deployPanel">
+    <h2>Step 1 — Deploy / デプロイ</h2>
+    <p class="note">Contract bytecode: <span class="mono" id="bytecodeInfo">—</span> (compiled from contracts/FishAutoSwap.sol, solc 0.8.x, no constructor arguments).</p>
+    <button type="button" id="deployBtn" class="big-btn claim" disabled>Deploy FishAutoSwap</button>
+    <p class="result" id="deployResult" role="status"></p>
+    <div class="field">
+      <label class="f-label" for="contractAddr">Contract address / コントラクトアドレス</label>
+      <input type="text" id="contractAddr" class="f-input mono" placeholder="0x…" autocomplete="off" spellcheck="false">
+      <p class="note">Filled in automatically after deployment. You can also paste an already-deployed address here to manage its keeper.</p>
+    </div>
+  </section>
+
+  <section class="panel" id="keeperPanel">
+    <h2>Step 2 — Set the keeper / キーパー設定</h2>
+    <p class="note">The keeper is the wallet the Worker signs with every morning. Create a fresh wallet for it, fund it with a little [42] for gas, then set its address here. Current keeper: <span class="mono" id="currentKeeper">—</span></p>
+    <div class="field">
+      <label class="f-label" for="keeperAddr">Keeper address / キーパーアドレス</label>
+      <input type="text" id="keeperAddr" class="f-input mono" placeholder="0x…" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="row">
+      <button type="button" id="readKeeperBtn" class="small-btn">Read current keeper</button>
+      <button type="button" id="setKeeperBtn" class="small-btn">Set keeper</button>
+    </div>
+    <p class="result" id="keeperResult" role="status"></p>
+  </section>
+
+  <section class="panel" id="summaryPanel">
+    <h2>Step 3 — Paste these into the Worker / Worker へ貼る値</h2>
+    <p class="note">Cloudflare dashboard → Workers &amp; Pages → <span class="mono">fish-autoswap</span> → Settings → Variables and Secrets:</p>
+    <div class="cfg-row"><span class="cfg-label">CONTRACT_ADDRESS (plain variable)</span><span class="cfg-value mono" id="sumContract">—</span></div>
+    <div class="cfg-row"><span class="cfg-label">Keeper address (for reference)</span><span class="cfg-value mono" id="sumKeeper">—</span></div>
+    <ul class="notes">
+      <li>Add the secret <span class="mono">KEEPER_PRIVATE_KEY</span> with the keeper wallet's private key — only in the Cloudflare dashboard, never in chat or GitHub.</li>
+      <li>Then paste the same contract address into <span class="mono">docs/app.js</span> (CONFIG.CONTRACT_ADDRESS) and push, so the registration site leaves its "coming soon" state.</li>
+      <li>Check <span class="mono">https://fish-autoswap.nepicobsv.workers.dev/status</span> — it should answer ready:true once both values are set.</li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <p><a href="en.html">← Back to FISH AutoSwap</a></p>
+</footer>
+
+<script src="bytecode.js?v=1"></script>
+<script src="admin.js?v=1"></script>
+</body>
+</html>

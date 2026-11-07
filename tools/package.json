@@ -1,0 +1,1 @@
+{"dependencies":{"ethers":"^6.13.0","ganache":"^7.9.2","solc":"^0.8.26"},"description":"Compile + local smoke-test tooling for FishAutoSwap (not part of the published service).","name":"fish-autoswap-tools","private":true,"type":"module"}
