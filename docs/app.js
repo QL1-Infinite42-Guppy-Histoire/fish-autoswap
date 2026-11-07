@@ -10,7 +10,7 @@
    drop display, countdowns and explanations already work. */
 
 var CONFIG = {
-  CONTRACT_ADDRESS: "", // <-- owner: paste the deployed FishAutoSwap address here
+  CONTRACT_ADDRESS: "0x478bd3bbd12b906a83c803aa6c14684d150ab994", // deployed 2026-11-07 by the owner
   WORKER_URL: "https://fish-autoswap.nepicobsv.workers.dev"
 };
 
