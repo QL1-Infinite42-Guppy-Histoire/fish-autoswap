@@ -170,7 +170,23 @@ var I18N = {
     badForm: "Please check the form: choose a token, a share between 1 and 100, and a daily limit above 0.",
     approveFirst: "Note: your approved amount is 0 right now. Do step ① (Approve) as well, or the morning swap cannot run.",
     alreadyToday: "Today's swap has already run.",
-    notYetToday: "Today's swap has not run yet."
+    notYetToday: "Today's swap has not run yet.",
+    statusChecking: "Checking the service status…",
+    statusRunning: "🟢 Running",
+    statusStopped: "🔴 Not running",
+    statusUnknown: "Could not check the service status",
+    statusScope: "Covers: FISH (each morning's drop) → the token you choose",
+    statusUsers: "Registered users: {n}",
+    statusReasonPrefix: "Reason: ",
+    myStatusTitle: "Your auto-swap status",
+    myRunning: "🟢 Running: FISH → {symbol}",
+    myPaused: "⏸ Paused: auto-swap is OFF",
+    myNotRegistered: "Not registered yet",
+    myNotRegDetail: "Register below and the morning auto-swap will start for you.",
+    myDetail: "{percent}% of the morning FISH · daily limit {cap} FISH",
+    myLoading: "Checking…",
+    myLoadFailed: "Could not read your status. Please tap “Check again” in a little while.",
+    nativeSymbol: "[42]"
   },
   ja: {
     pageTitle: "FISH オートスワップ 🐟",
@@ -278,7 +294,23 @@ var I18N = {
     badForm: "フォームをご確認ください: トークンを選び、割合は 1〜100、上限は 0 より大きくしてください。",
     approveFirst: "注意: いま許可量が 0 です。手順 ①（許可）も行わないと、朝の交換が実行されません。",
     alreadyToday: "今日の交換はすでに実行済みです。",
-    notYetToday: "今日の交換はまだ実行されていません。"
+    notYetToday: "今日の交換はまだ実行されていません。",
+    statusChecking: "サービスの状態を確認しています…",
+    statusRunning: "🟢 稼働中",
+    statusStopped: "🔴 停止中",
+    statusUnknown: "状態を確認できませんでした",
+    statusScope: "対象： FISH（毎朝の配布分）→ あなたが選んだトークン",
+    statusUsers: "登録者数： {n}人",
+    statusReasonPrefix: "理由： ",
+    myStatusTitle: "あなたの稼働状態",
+    myRunning: "🟢 稼働中： FISH → {symbol}",
+    myPaused: "⏸ 停止中：自動交換は OFF です",
+    myNotRegistered: "まだ登録していません",
+    myNotRegDetail: "下のフォームから登録すると、毎朝の自動交換が始まります。",
+    myDetail: "割合 {percent}% ・ 1日上限 {cap} FISH",
+    myLoading: "確認しています…",
+    myLoadFailed: "状態を読み取れませんでした。少し待ってから「もう一度調べる」を押してください。",
+    nativeSymbol: "[42]"
   }
 };
 
@@ -503,6 +535,8 @@ function applyI18n() {
   setText("clockTitle", "clockTitle");
   setText("nextDropLabel", "nextDropLabel");
   setText("nextRunLabel", "nextRunLabel");
+  setText("statusScope", "statusScope");
+  setText("myStatusTitle", "myStatusTitle");
   setText("noWalletTitle", "noWalletTitle");
   setText("noWalletText", "noWalletText");
   setText("connectBtn", "connectBtn");
@@ -654,10 +688,16 @@ async function loadOnChain() {
         decodeUint(done) !== 0n ? t("alreadyToday") : t("notYetToday");
       var creditOut = await ethCall(CONFIG.CONTRACT_ADDRESS, SEL.gasCredit + encodeAddress(account));
       var stipendOut = await ethCall(CONFIG.CONTRACT_ADDRESS, SEL.gasStipend);
-      renderGas(decodeUint(creditOut), decodeUint(stipendOut));
+      lastGasCredit = decodeUint(creditOut);
+      lastGasStipend = decodeUint(stipendOut);
+      renderGas(lastGasCredit, lastGasStipend);
+      renderMyStatus();
     } catch (e) {
       el("currentBody").textContent = t("dropFailed");
+      setMyStatusFailed();
     }
+  } else {
+    renderMyStatus();
   }
   loadHistory();
 }
@@ -795,11 +835,117 @@ function tickClocks() {
   el("nextRun").textContent = t("arrivesIn", { time: fmtCountdown(run - now) });
 }
 
+/* ---------- service status banner (Worker /status) ---------- */
+async function loadServiceStatus() {
+  var dot = el("statusDot");
+  var txt = el("statusText");
+  var reason = el("statusReason");
+  var users = el("statusUsers");
+  try {
+    var res = await fetch(CONFIG.WORKER_URL + "/status");
+    var data = await res.json();
+    if (!data || typeof data.ready !== "boolean") throw new Error("bad status");
+    if (data.ready) {
+      dot.className = "status-dot on";
+      txt.textContent = t("statusRunning");
+      reason.hidden = true;
+      reason.textContent = "";
+    } else {
+      dot.className = "status-dot off";
+      txt.textContent = t("statusStopped");
+      var r = data.detail || data.reason || "";
+      reason.hidden = !r;
+      reason.textContent = r ? t("statusReasonPrefix") + r : "";
+    }
+    users.textContent = typeof data.users === "number" ? t("statusUsers", { n: data.users }) : "";
+  } catch (e) {
+    /* Honest fallback: never claim "running" when the check failed. */
+    dot.className = "status-dot";
+    txt.textContent = t("statusUnknown");
+    reason.hidden = true;
+    reason.textContent = "";
+    users.textContent = "";
+  }
+}
+
+/* ---------- your running status panel ---------- */
+var lastGasCredit = null;
+var lastGasStipend = null;
+var targetSymbolCache = {};
+
+/* The target token's symbol, read from the token contract itself
+   (symbol()). Falls back to a shortened address — never a guess. */
+async function resolveTargetSymbol(address) {
+  if (!address || address === ZERO_ADDRESS) return t("nativeSymbol");
+  var a = address.toLowerCase();
+  if (targetSymbolCache[a]) return targetSymbolCache[a];
+  var sym = null;
+  try {
+    sym = decodeSymbol(await ethCall(a, SEL.symbol));
+  } catch (e) { sym = null; }
+  if (!sym) sym = a.slice(0, 6) + "…" + a.slice(-4);
+  targetSymbolCache[a] = sym;
+  return sym;
+}
+
+function setMyStatusFailed() {
+  if (!account) return;
+  el("myStatusPanel").hidden = false;
+  el("myStatusMain").textContent = t("myLoadFailed");
+  el("myStatusDetail").textContent = "";
+  el("myStatusNote").hidden = true;
+}
+
+async function renderMyStatus() {
+  if (!account) { el("myStatusPanel").hidden = true; return; }
+  el("myStatusPanel").hidden = false;
+  var main = el("myStatusMain");
+  var detail = el("myStatusDetail");
+  var note = el("myStatusNote");
+  note.hidden = true;
+  if (!ready) {
+    main.textContent = t("statusStopped");
+    detail.textContent = "";
+    return;
+  }
+  var cfg = currentConfig;
+  if (!cfg) {
+    main.textContent = t("myLoading");
+    detail.textContent = "";
+    return;
+  }
+  if (!cfg.registered) {
+    main.textContent = t("myNotRegistered");
+    detail.textContent = t("myNotRegDetail");
+    return;
+  }
+  var sym = await resolveTargetSymbol(cfg.targetToken);
+  if (currentConfig !== cfg || !account) return; /* changed while resolving */
+  var det = t("myDetail", {
+    percent: (Number(cfg.percentBps) / 100).toString(),
+    cap: formatToken(cfg.dailyCap)
+  });
+  if (cfg.enabled) {
+    main.textContent = t("myRunning", { symbol: sym });
+    detail.textContent = det;
+    if (lastGasStipend && lastGasStipend > 0n && lastGasCredit !== null && lastGasCredit < lastGasStipend) {
+      note.hidden = false;
+      note.textContent = t("gasWarn");
+    }
+  } else {
+    main.textContent = t("myPaused");
+    detail.textContent = det;
+  }
+}
+
 /* ---------- events ---------- */
 function init() {
   applyI18n();
   tickClocks();
   setInterval(tickClocks, 1000);
+  el("statusText").textContent = t("statusChecking");
+  loadServiceStatus();
+  setInterval(loadServiceStatus, 60000);
 
   el("langSel").addEventListener("change", function () {
     try { localStorage.setItem("fishautoswap_lang", this.value); } catch (e) {}
@@ -1002,6 +1148,7 @@ function init() {
     window.ethereum.on("accountsChanged", function (accs) {
       account = accs && accs[0] ? accs[0] : null;
       if (account) showAccount();
+      else el("myStatusPanel").hidden = true;
     });
     window.ethereum.on("chainChanged", function () { location.reload(); });
   }
@@ -1046,6 +1193,10 @@ function showAccount() {
   el("walletAddr").textContent = account;
   el("dropPanel").hidden = false;
   el("histPanel").hidden = false;
+  el("myStatusPanel").hidden = false;
+  el("myStatusMain").textContent = t("myLoading");
+  el("myStatusDetail").textContent = "";
+  el("myStatusNote").hidden = true;
   loadOnChain();
 }
 

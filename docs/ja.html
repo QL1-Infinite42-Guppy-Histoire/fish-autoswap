@@ -20,6 +20,21 @@
 </header>
 
 <main>
+  <!-- Service status -->
+  <section class="panel status-banner" id="statusPanel">
+    <div class="status-line">
+      <span class="status-dot" id="statusDot"></span>
+      <span class="status-big" id="statusText">…</span>
+    </div>
+    <p class="note" id="statusReason" hidden></p>
+    <p class="status-scope" id="statusScope"></p>
+    <p class="status-meta" id="statusUsers"></p>
+    <div class="info-card status-next">
+      <div class="i-label" id="nextRunLabel">Next auto-swap 09:10</div>
+      <div class="i-value" id="nextRun">—</div>
+    </div>
+  </section>
+
   <!-- How it works -->
   <section class="panel" id="howPanel">
     <h2 id="howTitle">How it works</h2>
@@ -38,10 +53,6 @@
       <div class="info-card">
         <div class="i-label" id="nextDropLabel">Next FISH drop ≈ 09:06</div>
         <div class="i-value" id="nextDrop">—</div>
-      </div>
-      <div class="info-card">
-        <div class="i-label" id="nextRunLabel">Next auto-swap 09:10</div>
-        <div class="i-value" id="nextRun">—</div>
       </div>
     </div>
   </section>
@@ -67,6 +78,14 @@
       </div>
     </div>
     <p class="result" id="connectResult" role="status"></p>
+  </section>
+
+  <!-- Your running status -->
+  <section class="panel" id="myStatusPanel" hidden>
+    <h2 id="myStatusTitle">Your auto-swap status</h2>
+    <p class="my-status-big" id="myStatusMain">—</p>
+    <p class="note" id="myStatusDetail"></p>
+    <p class="result error" id="myStatusNote" hidden></p>
   </section>
 
   <!-- Your drop today -->
@@ -233,6 +252,6 @@
   <p><a href="admin.html" id="ownerLink">Owner</a></p>
 </footer>
 
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

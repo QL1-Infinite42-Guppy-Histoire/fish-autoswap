@@ -42,6 +42,16 @@ main { padding-bottom: 8px; }
 .chips { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 .chip { background: #f2f9fd; color: #17303f; border: 1px solid #bfd9ea; border-radius: 999px; padding: 10px 16px; font-size: 14px; font-weight: 700; cursor: pointer; min-height: 44px; }
 .chip.active { background: #0284c7; border-color: #0284c7; color: #fff; }
+.status-banner { border-width: 2px; }
+.status-line { display: flex; align-items: center; gap: 10px; }
+.status-dot { width: 16px; height: 16px; border-radius: 50%; background: #94a3b8; flex: none; }
+.status-dot.on { background: #22c55e; box-shadow: 0 0 0 5px rgba(34,197,94,.16); }
+.status-dot.off { background: #ef4444; box-shadow: 0 0 0 5px rgba(239,68,68,.14); }
+.status-big { font-size: 24px; font-weight: 800; }
+.status-scope { font-size: 15px; font-weight: 700; margin: 10px 0 0; }
+.status-meta { color: #5b7a8c; font-size: 14px; margin: 6px 0 0; min-height: 20px; }
+.status-next { margin-top: 12px; }
+.my-status-big { font-size: 20px; font-weight: 800; margin: 2px 0 4px; line-height: 1.5; word-break: break-word; }
 .cfg-row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid #e3f0f8; font-size: 14px; }
 .cfg-row:first-child { border-top: 0; }
 .cfg-label { color: #5b7a8c; }
