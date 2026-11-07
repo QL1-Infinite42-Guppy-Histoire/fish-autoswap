@@ -1,7 +1,7 @@
 "use strict";
 /* FISH AutoSwap — registration site. Vanilla JS only, no web3 library.
    Reads go through public 42 Chain RPCs; writes go through the user's
-   own wallet (window.ethereum). This site NEVER asks for a seed phrase
+   own wallet (an injected EIP-1193 provider). This site NEVER asks for a seed phrase
    or a private key.
 
    Until CONFIG.CONTRACT_ADDRESS is filled in (the owner deploys the
@@ -79,8 +79,15 @@ var I18N = {
     nextRunLabel: "Next auto-swap 09:10",
     arrivesIn: "in {time}",
     noWalletTitle: "You need a wallet app",
-    noWalletText: "No wallet was found in this browser. Please install a wallet app such as MetaMask, then open this page inside that app's browser. Never share your recovery phrase or private key with anyone — this site will never ask for it.",
+    noWalletText: "No wallet was found in this browser. If you have MetaMask, tap the button below to open this page inside it. With another wallet app (such as FoxWallet), copy this page's URL below and paste it into that app's browser. Never share your recovery phrase or private key with anyone — this site will never ask for it.",
+    openMetaMaskBtn: "Open in MetaMask",
+    copyUrlBtn: "Copy this page's URL",
+    urlCopied: "Copied! Open your wallet app and paste the URL into its browser.",
+    urlCopyFail: "Could not copy automatically — please copy this URL by hand: ",
     connectBtn: "Connect wallet",
+    connectWithBtn: "Connect with {name}",
+    walletGeneric: "Wallet",
+    checkingWallet: "Check your wallet app…",
     connectNote: "Tap to connect. We only read your public address — connecting alone cannot move your money.",
     yourWalletLabel: "Your wallet",
     rescanBtn: "Check again",
@@ -216,8 +223,15 @@ var I18N = {
     nextRunLabel: "次の自動交換 09:10",
     arrivesIn: "あと {time}",
     noWalletTitle: "ウォレットアプリが必要です",
-    noWalletText: "このブラウザではウォレットが見つかりませんでした。MetaMask などのウォレットアプリを入れて、そのアプリの中のブラウザでこのページを開いてください。復旧フレーズや秘密鍵は絶対に誰にも教えないでください — このサイトが聞くことはありません。",
+    noWalletText: "このブラウザではウォレットが見つかりませんでした。MetaMask がある方は、下のボタンでこのページを MetaMask の中で開けます。FoxWallet など他のウォレットアプリの方は、下のボタンでURLをコピーして、アプリの中のブラウザに貼り付けて開いてください。復旧フレーズや秘密鍵は絶対に誰にも教えないでください — このサイトが聞くことはありません。",
+    openMetaMaskBtn: "MetaMask で開く",
+    copyUrlBtn: "このページのURLをコピー",
+    urlCopied: "コピーしました！ウォレットアプリを開いて、その中のブラウザに貼り付けてください。",
+    urlCopyFail: "自動でコピーできませんでした。このURLを手でコピーしてください： ",
     connectBtn: "ウォレットをつなぐ",
+    connectWithBtn: "{name} でつなぐ",
+    walletGeneric: "ウォレット",
+    checkingWallet: "ウォレットアプリで確認してください…",
     connectNote: "押すとつながります。あなたの公開アドレスを読むだけです — つなぐだけでお金が動くことはありません。",
     yourWalletLabel: "あなたのウォレット",
     rescanBtn: "もう一度調べる",
@@ -506,24 +520,166 @@ async function todaysDrop(addr) {
   return total;
 }
 
-/* ---------- wallet ---------- */
+/* ---------- wallet providers ---------- */
+/* Visitors arrive through some wallet app's in-app browser (MetaMask,
+   FoxWallet, ...). A provider can show up as window.ethereum, inside its
+   .providers array, as window.foxwallet.ethereum / .provider, or via an
+   EIP-6963 announcement — and mobile wallets often inject only AFTER
+   this script starts. So discovery collects candidates from all of
+   those sources and init waits briefly for a late injection instead of
+   giving up on the first check. Every wallet call in this file goes
+   through provider() — the one the user picked (MetaMask by default). */
 var account = null;
-function hasWallet() { return typeof window.ethereum !== "undefined"; }
+var selectedProvider = null;
+var announcedProviders = []; // {provider, name} collected via EIP-6963
+var providerWaiters = [];
+
+function isProviderLike(p) { return !!p && typeof p.request === "function"; }
+
+function candidateProviders() {
+  var out = [];
+  function push(p, name) {
+    if (!isProviderLike(p)) return;
+    for (var i = 0; i < out.length; i++) {
+      if (out[i].provider === p) {
+        if (name && !out[i].name) out[i].name = name;
+        return;
+      }
+    }
+    out.push({ provider: p, name: name || null });
+  }
+  announcedProviders.forEach(function (a) { push(a.provider, a.name); });
+  var eth = typeof window !== "undefined" ? window.ethereum : null;
+  if (eth) {
+    if (Array.isArray(eth.providers)) {
+      eth.providers.forEach(function (p) { push(p); });
+    }
+    push(eth);
+  }
+  var fw = typeof window !== "undefined" ? window.foxwallet : null;
+  if (fw) {
+    push(fw.ethereum, "FoxWallet");
+    push(fw.provider, "FoxWallet");
+  }
+  return out;
+}
+function providerName(entry) {
+  if (entry.name) return entry.name;
+  var p = entry.provider;
+  if (p.isMetaMask) return "MetaMask";
+  if (p.isFoxWallet) return "FoxWallet";
+  var fw = typeof window !== "undefined" ? window.foxwallet : null;
+  if (fw && (fw.ethereum === p || fw.provider === p)) return "FoxWallet";
+  return t("walletGeneric");
+}
+function provider() { return selectedProvider; }
+function hasWallet() { return candidateProviders().length > 0; }
+function pickDefaultProvider(cands) {
+  var i;
+  for (i = 0; i < cands.length; i++) {
+    if (cands[i].provider.isMetaMask) return cands[i].provider;
+  }
+  var eth = typeof window !== "undefined" ? window.ethereum : null;
+  if (eth) {
+    for (i = 0; i < cands.length; i++) {
+      if (cands[i].provider === eth) return eth;
+    }
+  }
+  return cands.length ? cands[0].provider : null;
+}
+
+/* EIP-6963: listen for announcements from the moment this script loads
+   (wallets answer the request dispatched in waitForAnyProvider). */
+function notifyProviderArrival() {
+  var w = providerWaiters.slice();
+  providerWaiters = [];
+  w.forEach(function (fn) { fn(); });
+}
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("eip6963:announceProvider", function (ev) {
+    try {
+      var d = ev && ev.detail;
+      if (d && isProviderLike(d.provider)) {
+        announcedProviders.push({
+          provider: d.provider,
+          name: d.info && d.info.name ? String(d.info.name) : null
+        });
+        notifyProviderArrival();
+      }
+    } catch (e) {}
+  });
+}
+
+/* Wait up to timeoutMs for any candidate provider to appear (late
+   mobile-wallet injection). Resolves true if one is available. */
+function waitForAnyProvider(timeoutMs) {
+  if (hasWallet()) return Promise.resolve(true);
+  return new Promise(function (resolve) {
+    var done = false;
+    var iv = null, to = null;
+    function cleanup() {
+      if (iv) clearInterval(iv);
+      if (to) clearTimeout(to);
+      if (typeof window !== "undefined" && typeof window.removeEventListener === "function") {
+        window.removeEventListener("ethereum#initialized", check);
+      }
+      var i = providerWaiters.indexOf(check);
+      if (i >= 0) providerWaiters.splice(i, 1);
+    }
+    function finish(ok) {
+      if (done) return;
+      done = true;
+      cleanup();
+      resolve(ok);
+    }
+    function check() { if (hasWallet()) finish(true); }
+    iv = setInterval(check, 100);
+    to = setTimeout(function () { finish(hasWallet()); }, timeoutMs);
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+      window.addEventListener("ethereum#initialized", check);
+    }
+    providerWaiters.push(check);
+    try {
+      window.dispatchEvent(new Event("eip6963:requestProvider"));
+    } catch (e) {}
+    check();
+  });
+}
+
+function attachProviderListeners(p) {
+  if (!p || typeof p.on !== "function" || p.__fishAutoSwapListeners) return;
+  p.__fishAutoSwapListeners = true;
+  p.on("accountsChanged", function (accs) {
+    if (provider() !== p) return;
+    account = accs && accs[0] ? accs[0] : null;
+    if (account) showAccount();
+    else el("myStatusPanel").hidden = true;
+    loadBoard();
+  });
+  p.on("chainChanged", function () {
+    if (provider() === p) location.reload();
+  });
+}
+
 async function walletChainId() {
-  return window.ethereum.request({ method: "eth_chainId" });
+  var p = provider();
+  if (!p) throw new Error("no wallet");
+  return p.request({ method: "eth_chainId" });
 }
 async function ensureChain() {
+  var p = provider();
+  if (!p) return false;
   var cid = await walletChainId();
   if (cid === CHAIN_ID_HEX) return true;
   try {
-    await window.ethereum.request({
+    await p.request({
       method: "wallet_switchEthereumChain",
       params: [{ chainId: CHAIN_ID_HEX }]
     });
     return true;
   } catch (e) {
     if (e && e.code === 4902) {
-      await window.ethereum.request({
+      await p.request({
         method: "wallet_addEthereumChain",
         params: [{
           chainId: CHAIN_ID_HEX,
@@ -538,8 +694,133 @@ async function ensureChain() {
     return false;
   }
 }
+
+/* One connect button per candidate when several wallets are injected;
+   a single candidate keeps the one big button. */
+function buildConnectButtons(cands) {
+  var list = el("connectBtnList");
+  var single = el("connectBtn");
+  list.innerHTML = "";
+  if (cands.length <= 1) {
+    list.hidden = true;
+    single.hidden = false;
+    return;
+  }
+  single.hidden = true;
+  list.hidden = false;
+  cands.forEach(function (entry) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "big-btn";
+    b.textContent = t("connectWithBtn", { name: providerName(entry) });
+    b.addEventListener("click", function () { connectWith(entry.provider, b); });
+    list.appendChild(b);
+  });
+}
+
+async function connectWith(p, btn) {
+  var res = el("connectResult");
+  if (!p) return;
+  selectedProvider = p;
+  attachProviderListeners(p);
+  var orig = btn ? btn.textContent : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = t("checkingWallet");
+  }
+  try {
+    var accounts = await p.request({ method: "eth_requestAccounts" });
+    account = accounts[0];
+    var ok = await ensureChain();
+    if (!ok) {
+      res.className = "result error";
+      res.textContent = t("wrongChain");
+      el("switchChainBtn").hidden = false;
+      return;
+    }
+    res.className = "result ok";
+    res.textContent = t("connected");
+    showAccount();
+  } catch (e) {
+    res.className = "result error";
+    res.textContent = t("rejected");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      if (orig) btn.textContent = orig;
+    }
+  }
+}
+
+/* If the wallet already authorised this page, restore the session
+   without a tap. Never auto-switch chains (some wallets block that
+   without a tap) — a wrong chain shows the switch button instead. */
+async function tryAutoReconnect() {
+  var p = provider();
+  if (!p) return;
+  try {
+    var accs = await p.request({ method: "eth_accounts" });
+    if (!accs || !accs.length || !accs[0]) return;
+    account = accs[0];
+    var cid = null;
+    try { cid = await walletChainId(); } catch (e) { cid = null; }
+    var res = el("connectResult");
+    if (cid && cid !== CHAIN_ID_HEX) {
+      res.className = "result error";
+      res.textContent = t("wrongChain");
+      el("switchChainBtn").hidden = false;
+      return;
+    }
+    res.className = "result ok";
+    res.textContent = t("connected");
+    showAccount();
+  } catch (e) { /* stay on the manual connect flow */ }
+}
+
+async function setupWallet() {
+  var found = await waitForAnyProvider(3000);
+  var cands = candidateProviders();
+  if (!found || !cands.length) {
+    el("noWalletPanel").hidden = false;
+    el("connectPanel").hidden = true;
+    return;
+  }
+  selectedProvider = pickDefaultProvider(cands);
+  attachProviderListeners(selectedProvider);
+  buildConnectButtons(cands);
+  tryAutoReconnect();
+}
+
+async function copyPageUrl() {
+  var out = el("copyUrlResult");
+  var url = location.href;
+  var ok = false;
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(url);
+      ok = true;
+    }
+  } catch (e) { ok = false; }
+  if (!ok) {
+    try {
+      var ta = document.createElement("textarea");
+      ta.value = url;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      ok = !!document.execCommand("copy");
+      document.body.removeChild(ta);
+    } catch (e) { ok = false; }
+  }
+  out.className = "result " + (ok ? "ok" : "error");
+  out.textContent = ok ? t("urlCopied") : t("urlCopyFail") + url;
+}
 async function sendTx(to, data, resultEl, valueWei) {
-  var hash = await window.ethereum.request({
+  var p = provider();
+  if (!p) throw new Error("no wallet");
+  var hash = await p.request({
     method: "eth_sendTransaction",
     params: [{
       from: account,
@@ -604,6 +885,8 @@ function applyI18n() {
   setText("boardRefreshBtn", "boardRefresh");
   setText("noWalletTitle", "noWalletTitle");
   setText("noWalletText", "noWalletText");
+  setText("mmOpenLink", "openMetaMaskBtn");
+  setText("copyUrlBtn", "copyUrlBtn");
   setText("connectBtn", "connectBtn");
   setText("connectNote", "connectNote");
   setText("yourWalletLabel", "yourWalletLabel");
@@ -1134,31 +1417,22 @@ function init() {
     location.href = this.value + ".html";
   });
 
-  if (!hasWallet()) {
-    el("noWalletPanel").hidden = false;
-    el("connectPanel").hidden = true;
+  /* No-wallet escape hatches (deep link into MetaMask / copy the URL
+     for FoxWallet and other wallet browsers). The deep link is built
+     from the current host + path, so both language pages work. */
+  var mmLink = el("mmOpenLink");
+  if (mmLink) {
+    mmLink.href = "https://metamask.app.link/dapp/" + location.host + location.pathname;
   }
+  el("copyUrlBtn").addEventListener("click", copyPageUrl);
 
-  el("connectBtn").addEventListener("click", async function () {
-    var res = el("connectResult");
-    try {
-      var accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-      account = accounts[0];
-      var ok = await ensureChain();
-      if (!ok) {
-        res.className = "result error";
-        res.textContent = t("wrongChain");
-        el("switchChainBtn").hidden = false;
-        return;
-      }
-      res.className = "result ok";
-      res.textContent = t("connected");
-      showAccount();
-    } catch (e) {
-      res.className = "result error";
-      res.textContent = t("rejected");
-    }
+  el("connectBtn").addEventListener("click", function () {
+    connectWith(provider(), el("connectBtn"));
   });
+
+  /* Providers (FoxWallet included) may inject late — wait briefly
+     before deciding there is no wallet at all. */
+  setupWallet();
 
   el("switchChainBtn").addEventListener("click", async function () {
     var res = el("connectResult");
@@ -1326,15 +1600,6 @@ function init() {
     } catch (e) { txError(res, e); }
   });
 
-  if (hasWallet() && window.ethereum.on) {
-    window.ethereum.on("accountsChanged", function (accs) {
-      account = accs && accs[0] ? accs[0] : null;
-      if (account) showAccount();
-      else el("myStatusPanel").hidden = true;
-      loadBoard();
-    });
-    window.ethereum.on("chainChanged", function () { location.reload(); });
-  }
 }
 
 function decodeSymbol(hex) {

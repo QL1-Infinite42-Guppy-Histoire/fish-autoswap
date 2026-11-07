@@ -26,6 +26,9 @@ main { padding-bottom: 8px; }
 .big-btn.secondary { background: #0369a1; font-size: 17px; padding: 14px 16px; min-height: 52px; }
 .small-btn { background: #fff; color: #17303f; border: 1px solid #bfd9ea; border-radius: 10px; padding: 10px 14px; font-size: 14px; cursor: pointer; min-height: 44px; }
 .small-btn.danger { border-color: #f3c2c2; color: #991b1b; }
+.stack { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+a.big-btn.link-btn { text-decoration: none; text-align: center; }
+#switchChainBtn { margin-top: 10px; }
 .small-btn:disabled, .chip:disabled { opacity: .45; cursor: default; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
 .mono { font-family: ui-monospace, monospace; font-size: 13px; word-break: break-all; }

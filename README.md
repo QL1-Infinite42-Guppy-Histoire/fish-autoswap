@@ -88,11 +88,13 @@ Note: after redeploying, verify in the dashboard that the secrets are still pres
 - コントラクト: `cd tools && npm install && node compile.mjs` でコンパイル。`node smoke-test.mjs` でローカル EVM（ganache）上にモックの FISH / ルーター / ファクトリーを実アドレスへ配置し、登録→実行・1日1回制限・上限・無効化・一時停止・経路検証に加えて、ガス預かり方式の検証（入金で残高が増える／実行で stipend ちょうどがキーパーに渡り残高が減る／残高不足では revert して何も引かれない／失敗したスワップでは引かれない／出金は本人の分だけ・上限超えは revert／他人の預かり金には届かない／stipend の上限キャップ）を含む **49項目すべて合格**。
 - サイト読み取り: `node verify-site-reads.mjs` で「今日の配布」集計がエクスプローラーの実績値と wei 単位で一致することを確認済み。
 - 登録済みアドレスボード: サイトに全登録者の一覧（アドレス・交換先トークン・有効/停止中・割合）を公開表示（ウォレット未接続でも閲覧可）。`node tools/verify-board.mjs` で描画結果が実チェーンと一致することを確認済み。
+- ウォレット接続UX: `node tools/verify-wallet-ux.mjs` でモックプロバイダを使い8シナリオ検証済み（ウォレット無し時の MetaMask ディープリンク／URLコピー、自動再接続、チェーン違い時の切替ボタン、接続待ち表示と二重タップ防止、複数プロバイダの候補別ボタンと選択先への送受信、500ms 遅延注入の拾い上げ、FoxWallet のみの環境、EIP-6963 発見）。
 - Worker: デプロイ済み。`CONTRACT_ADDRESS` 未設定の間は `/status` が `not_ready` を返し、Cron が来ても何もしません。
 
 - Contract: compile with `node compile.mjs`; `node smoke-test.mjs` runs **49 checks, all passing**, on a local ganache chain with mocks placed at the real mainnet addresses — register → execute, once-per-day gate, cap, disable, pause, path validation, plus the gas pre-deposit model (deposit credits the exact amount; a successful execute pays exactly one stipend to the keeper and deducts it; insufficient credit reverts and charges nothing; a failed swap charges nothing; withdrawals return only the caller's own credit and cannot exceed it; another user cannot reach your credit; the stipend setter is owner-only and hard-capped).
 - Site reads: `verify-site-reads.mjs` confirmed the "today's drop" total matches the explorer's record to the wei.
 - Registered-addresses board: the site publicly lists every registered address with its chosen token, active/paused state and share (no wallet connection needed); `verify-board.mjs` checks the rendered board against the live chain.
+- Wallet-connection UX: `verify-wallet-ux.mjs` exercises 8 mock-provider scenarios — no-wallet deep link / URL copy, auto-reconnect, wrong-chain switch button, pending state with repeat-tap guard, per-provider buttons with requests/transactions routed to the chosen one, a provider injected 500ms late, a FoxWallet-only environment, and EIP-6963 discovery.
 - Worker: deployed; while `CONTRACT_ADDRESS` is unset, `/status` answers `not_ready` and the daily cron does nothing.
 
 ## 開発メモ / Development notes

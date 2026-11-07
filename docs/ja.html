@@ -61,11 +61,17 @@
   <section class="panel warn" id="noWalletPanel" hidden>
     <h2 id="noWalletTitle">You need a wallet app</h2>
     <p id="noWalletText"></p>
+    <div class="stack">
+      <a id="mmOpenLink" class="big-btn link-btn" href="#" target="_blank" rel="noopener">Open in MetaMask</a>
+      <button type="button" id="copyUrlBtn" class="big-btn secondary">Copy this page's URL</button>
+    </div>
+    <p class="result" id="copyUrlResult" role="status"></p>
   </section>
 
   <!-- Connect -->
   <section class="panel" id="connectPanel">
     <div id="connectBox">
+      <div id="connectBtnList" class="stack" hidden></div>
       <button type="button" id="connectBtn" class="big-btn">Connect wallet</button>
       <p class="note" id="connectNote"></p>
     </div>
@@ -74,10 +80,10 @@
       <div class="mono" id="walletAddr">—</div>
       <div class="row">
         <button type="button" id="rescanBtn" class="small-btn">Check again</button>
-        <button type="button" id="switchChainBtn" class="small-btn" hidden>Switch to 42 Chain</button>
       </div>
     </div>
     <p class="result" id="connectResult" role="status"></p>
+    <button type="button" id="switchChainBtn" class="big-btn secondary" hidden>Switch to 42 Chain</button>
   </section>
 
   <!-- Your running status -->
@@ -263,6 +269,6 @@
   <p><a href="admin.html" id="ownerLink">Owner</a></p>
 </footer>
 
-<script src="app.js?v=5"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>
