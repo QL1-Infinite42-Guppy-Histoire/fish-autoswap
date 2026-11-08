@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FISH AutoSwap — for 42 Chain</title>
 <meta name="description" content="The FISH that arrives every morning (liquidity / TOWEL rewards) is swapped automatically at 09:10 Japan time into a token you choose. Register once on 42 Chain.">
+<script>(function(){try{document.documentElement.dataset.theme=localStorage.getItem("guppy-theme")==="dark"?"dark":"light";}catch(e){document.documentElement.dataset.theme="light";}})();</script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header>
-  <span class="lang-switch"><label><span>Language / 言語</span> <select id="langSel"><option value="en" selected>English</option><option value="ja">日本語</option></select></label></span>
+  <span class="lang-switch"><label><span>Language / 言語</span> <select id="langSel"><option value="en" selected>English</option><option value="ja">日本語</option></select></label></span><button type="button" id="themeToggle" class="theme-toggle" aria-label="Toggle background theme"></button>
   <div class="brand">
     <span class="brand-emoji">🐟</span>
     <div>
@@ -270,5 +271,15 @@
 </footer>
 
 <script src="app.js?v=6"></script>
+<script>
+(function(){
+  var btn=document.getElementById("themeToggle");
+  if(!btn)return;
+  var ja=(document.documentElement.lang||"").indexOf("ja")===0;
+  function label(){var d=document.documentElement.dataset.theme==="dark";btn.textContent=d?(ja?"\u2600\uFE0F \u767D\u80CC\u666F":"\u2600\uFE0F Light"):(ja?"\uD83C\uDF19 \u9ED2\u80CC\u666F":"\uD83C\uDF19 Dark");}
+  label();
+  btn.addEventListener("click",function(){var next=document.documentElement.dataset.theme==="dark"?"light":"dark";document.documentElement.dataset.theme=next;try{localStorage.setItem("guppy-theme",next);}catch(e){}label();});
+})();
+</script>
 </body>
 </html>

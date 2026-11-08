@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FishAutoSwap — Owner deploy page</title>
 <meta name="description" content="Owner-only page: deploy the FishAutoSwap contract from your own wallet and set the keeper address.">
+<script>(function(){try{document.documentElement.dataset.theme=localStorage.getItem("guppy-theme")==="dark"?"dark":"light";}catch(e){document.documentElement.dataset.theme="light";}})();</script>
 <link rel="stylesheet" href="style.css">
+<style>@media (min-width:1024px){main .panel:first-child{grid-column:1/-1}#connectPanel{grid-column:1/-1}#deployPanel{grid-column:1}#keeperPanel{grid-column:2}#summaryPanel{grid-column:1/-1}}</style>
 </head>
 <body>
 <header>
@@ -16,6 +18,7 @@
       <p class="sub">Deploy the contract from your own wallet / あなたのウォレットからコントラクトをデプロイする管理者専用ページ</p>
     </div>
   </div>
+  <button type="button" id="themeToggle" class="theme-toggle" aria-label="Toggle background theme"></button>
 </header>
 
 <main>
@@ -88,5 +91,15 @@
 
 <script src="bytecode.js?v=1"></script>
 <script src="admin.js?v=1"></script>
+<script>
+(function(){
+  var btn=document.getElementById("themeToggle");
+  if(!btn)return;
+  var ja=(document.documentElement.lang||"").indexOf("ja")===0;
+  function label(){var d=document.documentElement.dataset.theme==="dark";btn.textContent=d?(ja?"\u2600\uFE0F \u767D\u80CC\u666F":"\u2600\uFE0F Light"):(ja?"\uD83C\uDF19 \u9ED2\u80CC\u666F":"\uD83C\uDF19 Dark");}
+  label();
+  btn.addEventListener("click",function(){var next=document.documentElement.dataset.theme==="dark"?"light":"dark";document.documentElement.dataset.theme=next;try{localStorage.setItem("guppy-theme",next);}catch(e){}label();});
+})();
+</script>
 </body>
 </html>
