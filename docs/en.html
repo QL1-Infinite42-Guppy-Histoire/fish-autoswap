@@ -21,6 +21,12 @@
 </header>
 
 <main>
+  <!-- Maintenance notice -->
+  <section class="panel warn" id="maintenancePanel">
+    <h2 id="maintenanceTitle">🛠️ Under maintenance</h2>
+    <p id="maintenanceText"></p>
+  </section>
+
   <!-- Service status -->
   <section class="panel status-banner" id="statusPanel">
     <div class="status-line">
@@ -30,7 +36,7 @@
     <p class="note" id="statusReason" hidden></p>
     <p class="status-scope" id="statusScope"></p>
     <p class="status-meta" id="statusUsers"></p>
-    <div class="info-card status-next">
+    <div class="info-card status-next" id="nextRunCard">
       <div class="i-label" id="nextRunLabel">Next auto-swap 09:10</div>
       <div class="i-value" id="nextRun">—</div>
     </div>
@@ -270,7 +276,7 @@
   <p><a href="admin.html" id="ownerLink">Owner</a></p>
 </footer>
 
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 <script>
 (function(){
   var btn=document.getElementById("themeToggle");

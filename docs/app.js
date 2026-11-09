@@ -14,6 +14,15 @@ var CONFIG = {
   WORKER_URL: "https://fish-autoswap.nepicobsv.workers.dev"
 };
 
+/* Maintenance mode (owner decision 2026-11-09): the morning keeper run
+   failed for a reason still being investigated, so the service is
+   publicly marked "under maintenance". While this is true, every write
+   action is disabled EXCEPT withdrawing deposited gas money ([42]) —
+   users must always be able to take their own deposit back. All reads,
+   the wallet connection and the withdrawal flow work exactly as before.
+   Set back to false to reopen the service. */
+var MAINTENANCE = true;
+
 var FISH = "0x2c32120a12b754272d9e85c57f64b50ca2c43513";
 var CHAIN_ID_HEX = "0x66c9a"; // 421018
 var RPCS = [
@@ -101,6 +110,10 @@ var I18N = {
     connectFirst: "Connect your wallet to see your numbers.",
     regTitle: "Your auto-swap registration",
     comingSoon: "🚧 Coming soon — registration is not open yet. The contract is being prepared. Everything else on this page (your drop, the countdowns) already works.",
+    maintenanceTitle: "🛠️ Under maintenance",
+    maintenanceText: "The auto-swap service is currently under maintenance. New registrations, settings changes and gas deposits are paused. You can still withdraw your deposited [42] at any time.",
+    statusMaintenance: "🛠️ Under maintenance",
+    maintenanceRegNote: "🛠️ Under maintenance — new registrations, settings changes, approvals and gas deposits are paused. The only action available is withdrawing your deposited [42] (step ③, “Take back”).",
     currentTitle: "Your current settings",
     notRegistered: "Not registered yet. Fill in the form below and do steps ① and ②.",
     cfgTarget: "Swap into",
@@ -245,6 +258,10 @@ var I18N = {
     connectFirst: "ウォレットをつなぐと、あなたの数字が見られます。",
     regTitle: "自動交換の登録",
     comingSoon: "🚧 準備中 — 登録はまだ始まっていません。コントラクトの準備ができ次第、ここで登録できるようになります。このページの他の部分（今日の配布・カウントダウン）はすでに動いています。",
+    maintenanceTitle: "🛠️ メンテナンス中",
+    maintenanceText: "自動スワップは現在メンテナンス中です。新規登録・設定変更・ガス代の預け入れは停止しています。預けた [42] の引き出しはいつでもできます。",
+    statusMaintenance: "🛠️ メンテナンス中",
+    maintenanceRegNote: "🛠️ メンテナンス中 — 新規登録・設定変更・許可・ガス代の預け入れは停止しています。使えるのは、預けた [42] の引き出し（手順③の「取り戻す」）だけです。",
     currentTitle: "いまの設定",
     notRegistered: "まだ登録されていません。下のフォームを入れて、①と②を行ってください。",
     cfgTarget: "交換先",
@@ -866,8 +883,31 @@ var ready = isAddress(CONFIG.CONTRACT_ADDRESS);
 var currentConfig = null;
 var customToken = null; // {symbol, address, decimals}
 
+/* Maintenance gating — see the MAINTENANCE flag at the top. Hides the
+   schedule displays that would imply a run is coming, explains the
+   situation inside the registration panel, and disables every write
+   action except gas-money withdrawal (gasWithdrawBtn and its amount
+   input are deliberately NOT touched). */
+function applyMaintenance() {
+  if (!MAINTENANCE) return;
+  var note = el("comingSoon");
+  note.textContent = t("maintenanceRegNote");
+  note.hidden = false;
+  ["approveBtn", "registerBtn", "disableBtn", "revokeBtn",
+   "gasDepositBtn", "gasDepositAmount"].forEach(function (id) {
+    var n = el(id);
+    if (n) n.disabled = true;
+  });
+  var card = el("nextRunCard");
+  if (card) card.hidden = true;
+  var clock = el("clockPanel");
+  if (clock) clock.hidden = true;
+}
+
 function applyI18n() {
   document.title = t("pageTitle") + " — 42 Chain";
+  setText("maintenanceTitle", "maintenanceTitle");
+  setText("maintenanceText", "maintenanceText");
   setText("pageTitle", "pageTitle");
   setText("pageSub", "pageSub");
   setText("howTitle", "howTitle");
@@ -952,6 +992,7 @@ function applyI18n() {
       el(id).disabled = true;
     });
   }
+  applyMaintenance();
 }
 
 function buildTargetOptions() {
@@ -1189,6 +1230,15 @@ async function loadServiceStatus() {
   var txt = el("statusText");
   var reason = el("statusReason");
   var users = el("statusUsers");
+  if (MAINTENANCE) {
+    /* Maintenance supersedes the keeper's own status: never show the
+       green "running" state while the service is paused on purpose. */
+    dot.className = "status-dot";
+    txt.textContent = t("statusMaintenance");
+    reason.hidden = true;
+    reason.textContent = "";
+    return;
+  }
   try {
     var res = await fetch(CONFIG.WORKER_URL + "/status");
     var data = await res.json();
@@ -1497,6 +1547,7 @@ function init() {
     var res = el("regResult");
     if (!account) { res.textContent = t("needConnect"); return; }
     if (!ready) return;
+    if (MAINTENANCE) return;
     var amount = parseToken(el("approveAmount").value);
     if (amount === null || amount < 0n) { res.textContent = t("badForm"); return; }
     res.textContent = t("sending");
@@ -1510,6 +1561,7 @@ function init() {
     var res = el("regResult");
     if (!account) { res.textContent = t("needConnect"); return; }
     if (!ready) return;
+    if (MAINTENANCE) return;
     var target = selectedTarget();
     var percent = Number(el("percentInput").value);
     var cap = parseToken(el("capInput").value);
@@ -1539,6 +1591,7 @@ function init() {
     var res = el("regResult");
     if (!account) { res.textContent = t("needConnect"); return; }
     if (!ready) return;
+    if (MAINTENANCE) return;
     res.textContent = t("sending");
     try {
       await sendTx(CONFIG.CONTRACT_ADDRESS, SEL.disable, res);
@@ -1559,6 +1612,7 @@ function init() {
     var res = el("gasResult");
     if (!account) { res.textContent = t("needConnect"); return; }
     if (!ready) return;
+    if (MAINTENANCE) return;
     var amount = parseToken(el("gasDepositAmount").value);
     if (amount === null || amount <= 0n) {
       res.className = "result error";
@@ -1593,6 +1647,7 @@ function init() {
     var res = el("regResult");
     if (!account) { res.textContent = t("needConnect"); return; }
     if (!ready) return;
+    if (MAINTENANCE) return;
     res.textContent = t("sending");
     try {
       await sendTx(FISH, SEL.approve + encodeAddress(CONFIG.CONTRACT_ADDRESS) + encodeUint(0n), res);
