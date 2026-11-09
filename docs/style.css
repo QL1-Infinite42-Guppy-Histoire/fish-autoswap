@@ -82,6 +82,7 @@ footer { max-width: 1120px; margin: 0 auto; padding: 16px 20px 32px; color: var(
 @media (min-width: 1024px) {
   main { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; align-items: start; }
   main .panel { margin-top: 20px; }
+  #maintenancePanel { grid-column: 1 / -1; }
   #statusPanel { grid-column: 1 / -1; }
   #howPanel { grid-column: 1; }
   #clockPanel { grid-column: 2; }
