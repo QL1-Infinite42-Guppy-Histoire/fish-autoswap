@@ -464,7 +464,13 @@ async function runAll(env, source) {
         try {
           await ethCall(env, contract, data, wallet.address);
         } catch (e) {
-          const why = "preflight reverted: " + String(e && e.message).slice(0, 160);
+          // Keep the two failure kinds apart in the record: a real
+          // contract revert ("...reverted...") vs the preflight call
+          // itself failing (RPC down / non-JSON error page / timeout).
+          // They need different responses, and the 2026-11-09 incident
+          // stayed invisible precisely because reasons were not kept.
+          const msg = String(e && e.message).slice(0, 160);
+          const why = (msg.includes("revert") ? "preflight reverted: " : "preflight check failed: ") + msg;
           summary.skipped.push({ user, why });
           await logSkip(env, kv, { user, dateStr, status: "skipped_preflight", why, cfg, amountInWei: gross });
           continue;
