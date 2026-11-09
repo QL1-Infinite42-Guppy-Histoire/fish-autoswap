@@ -39,7 +39,13 @@
 //   AUTOSWAP_KV        (KV namespace: day-start block cache + history)
 //
 // History lives in KV under "hist:<user>:<padded ts>:<txHash>" and is
-// served per user at GET /history?user=0x...
+// served per user at GET /history?user=0x... Skip / failure outcomes
+// are recorded there too (same record shape, txHash null, a status
+// like "skipped_preflight" and the reason in "why"), deduplicated to
+// one record per user per day per status via "skipmark:" keys, so
+// 10-minute retries cannot flood the history. Run-level outcomes
+// (not ready / paused / error) go under "runlog:<padded ts>" with a
+// 30-day TTL; they are not part of the per-user history.
 
 import { ethers } from "ethers";
 
@@ -57,6 +63,10 @@ const TRANSFER_TOPIC = ethers.id("Transfer(address,address,uint256)");
 const EXPLORER_TX = "https://scan.infinitedrive.xyz/tx/";
 const LOG_CHUNK_BLOCKS = 2000;
 const GAS_FALLBACK = 600000n;
+// Per-attempt RPC timeout. Without it, one hanging endpoint stalls
+// the whole failover loop (observed with the panda endpoint); with
+// it, a hung endpoint is abandoned and the next one is tried.
+const RPC_TIMEOUT_MS = 10000;
 
 const AUTO_IFACE = new ethers.Interface([
   "function usersCount() view returns (uint256)",
@@ -129,23 +139,93 @@ function keeperWallet(env) {
 }
 
 // JSON-RPC with failover across the configured endpoints, in order.
+// Each attempt is aborted after RPC_TIMEOUT_MS so a hung endpoint
+// cannot stall the run; only the outcome of a call that previously
+// hung changes (it now falls through to the next endpoint).
 async function rpc(env, method, params) {
   let lastErr = null;
   for (const url of rpcUrls(env)) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), RPC_TIMEOUT_MS);
     try {
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+        signal: ctl.signal,
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error.message || "rpc error");
       return data.result;
     } catch (e) {
       lastErr = e;
+    } finally {
+      clearTimeout(timer);
     }
   }
   throw lastErr || new Error("all RPC endpoints failed");
+}
+
+// One history record for a run-level outcome (not ready / paused /
+// error / finished), under "runlog:" — operational visibility only,
+// never shown in the per-user /history. Best-effort.
+async function logRun(kv, summary) {
+  if (!kv) return;
+  const ts = Math.floor(Date.now() / 1000);
+  const rec = {
+    ts,
+    source: summary.source || null,
+    date: summary.date || null,
+    ran: Boolean(summary.ran),
+    reason: summary.reason || null,
+    users: summary.users ?? null,
+    executed: (summary.executed || []).length,
+    skipped: (summary.skipped || []).length,
+    failed: (summary.failed || []).length,
+  };
+  try {
+    await kv.put("runlog:" + String(ts).padStart(12, "0"), JSON.stringify(rec), {
+      expirationTtl: 30 * 24 * 3600,
+    });
+  } catch (e) { /* best-effort */ }
+}
+
+// One history record for a per-user skip / failure, in exactly the
+// shape /history serves (txHash null, reason in "why"). Deduplicated
+// to one record per user per UTC day per status via "skipmark:" keys
+// so the 10-minute retry cron cannot flood a user's history.
+// amountInWei, when given, is the day's minted FISH the run was
+// considering for this user (the swap itself never happened).
+async function logSkip(env, kv, { user, dateStr, status, why, cfg, amountInWei }) {
+  if (!kv || !user) return;
+  try {
+    const markKey = "skipmark:" + user.toLowerCase() + ":" + dateStr + ":" + status;
+    if (await kv.get(markKey)) return;
+    await kv.put(markKey, "1", { expirationTtl: 2 * 24 * 3600 });
+  } catch (e) { /* fall through and write the record anyway */ }
+  let targetSymbol = null;
+  if (cfg) {
+    try {
+      targetSymbol = await tokenSymbol(env, cfg.targetToken);
+    } catch (e) { /* leave null */ }
+  }
+  const wei = amountInWei != null ? String(amountInWei) : "0";
+  const rec = {
+    date: dateStr,
+    ts: Math.floor(Date.now() / 1000),
+    user,
+    amountIn: wei === "0" ? "0" : ethers.formatEther(BigInt(wei)),
+    amountInWei: wei,
+    target: cfg ? cfg.targetToken : null,
+    targetSymbol,
+    txHash: null,
+    status,
+    why: why ? String(why).slice(0, 200) : null,
+  };
+  const key = "hist:" + user.toLowerCase() + ":" + String(rec.ts).padStart(12, "0") + ":" + status;
+  try {
+    await kv.put(key, JSON.stringify(rec));
+  } catch (e) { /* history is best-effort */ }
 }
 
 async function ethCall(env, to, data, from) {
@@ -272,23 +352,30 @@ async function waitReceipt(env, txHash, timeoutMs = 120000) {
 // The daily run. Returns a summary object; never throws.
 async function runAll(env, source) {
   const summary = { source, ran: false, executed: [], skipped: [], failed: [] };
+  const kv = env.AUTOSWAP_KV || null;
+  // Every exit goes through finish() so the run-level outcome always
+  // lands in KV ("runlog:") — including the not-ready and error
+  // outcomes that used to exist only in the cron console log.
+  const finish = async (s) => {
+    await logRun(kv, s);
+    return s;
+  };
   const contract = contractAddress(env);
   const wallet = keeperWallet(env);
   if (!contract) {
     summary.reason = "not_ready: CONTRACT_ADDRESS not set";
-    return summary;
+    return finish(summary);
   }
   if (!wallet) {
     summary.reason = "not_ready: KEEPER_PRIVATE_KEY not set";
-    return summary;
+    return finish(summary);
   }
-  const kv = env.AUTOSWAP_KV || null;
   const fish = fishAddress(env);
   try {
     const paused = await ethCall(env, contract, AUTO_IFACE.encodeFunctionData("paused"));
     if (AUTO_IFACE.decodeFunctionResult("paused", paused)[0]) {
       summary.reason = "contract paused";
-      return summary;
+      return finish(summary);
     }
     const count = Number(await callUint(env, contract, AUTO_IFACE.encodeFunctionData("usersCount")));
     summary.users = count;
@@ -320,11 +407,13 @@ async function runAll(env, source) {
         };
         if (!cfg.registered || !cfg.enabled) {
           summary.skipped.push({ user, why: "not enabled" });
+          await logSkip(env, kv, { user, dateStr, status: "skipped_not_enabled", why: "not enabled", cfg });
           continue;
         }
         const doneOut = await ethCall(env, contract, AUTO_IFACE.encodeFunctionData("executedToday", [user]));
         if (AUTO_IFACE.decodeFunctionResult("executedToday", doneOut)[0]) {
           summary.skipped.push({ user, why: "already executed today" });
+          await logSkip(env, kv, { user, dateStr, status: "skipped_executed_today", why: "already executed today", cfg });
           continue;
         }
         // Users pay their own execution gas from prepaid credit. If
@@ -338,42 +427,46 @@ async function runAll(env, source) {
             status: "skipped_gas_credit",
             gasCreditWei: credit.toString(),
           });
-          if (kv) {
-            const targetSymbol = await tokenSymbol(env, cfg.targetToken);
-            const rec = {
-              date: dateStr,
-              ts: Math.floor(Date.now() / 1000),
-              user,
-              amountIn: "0",
-              amountInWei: "0",
-              target: cfg.targetToken,
-              targetSymbol,
-              txHash: null,
-              status: "skipped_gas_credit",
-            };
-            const key =
-              "hist:" + user.toLowerCase() + ":" + String(rec.ts).padStart(12, "0") + ":nogas";
-            await kv.put(key, JSON.stringify(rec));
-          }
+          await logSkip(env, kv, {
+            user,
+            dateStr,
+            status: "skipped_gas_credit",
+            why: "gas credit insufficient",
+            cfg,
+          });
           continue;
         }
         const gross = await sumMintsToday(env, fish, user, startBlock, latest);
         if (gross === 0n) {
           summary.skipped.push({ user, why: "no FISH minted today" });
+          await logSkip(env, kv, { user, dateStr, status: "skipped_no_mint", why: "no FISH minted today", cfg });
           continue;
         }
         const path = await buildPath(env, fish, cfg);
         if (!path) {
           summary.skipped.push({ user, why: "no swap path to target" });
+          await logSkip(env, kv, {
+            user,
+            dateStr,
+            status: "skipped_no_path",
+            why: "no swap path to target",
+            cfg,
+            amountInWei: gross,
+          });
           continue;
         }
         const data = AUTO_IFACE.encodeFunctionData("execute", [user, gross, path]);
 
-        // Preflight: a reverting execute() is skipped and logged.
+        // Preflight: a reverting execute() is skipped and logged —
+        // to KV history as well as the summary. (Before 2026-11-09
+        // this branch only reached the console, which is why a
+        // structurally reverting contract went unnoticed for a day.)
         try {
           await ethCall(env, contract, data, wallet.address);
         } catch (e) {
-          summary.skipped.push({ user, why: "preflight reverted: " + String(e && e.message).slice(0, 160) });
+          const why = "preflight reverted: " + String(e && e.message).slice(0, 160);
+          summary.skipped.push({ user, why });
+          await logSkip(env, kv, { user, dateStr, status: "skipped_preflight", why, cfg, amountInWei: gross });
           continue;
         }
 
@@ -432,14 +525,16 @@ async function runAll(env, source) {
         if (ok) summary.executed.push(record);
         else summary.failed.push({ user, txHash, why: receipt ? "tx reverted on-chain" : "no receipt in time" });
       } catch (e) {
-        summary.failed.push({ user, why: String(e && e.message).slice(0, 200) });
+        const why = String(e && e.message).slice(0, 200);
+        summary.failed.push({ user, why });
+        await logSkip(env, kv, { user, dateStr, status: "error", why, cfg: null });
       }
     }
     summary.ran = true;
-    return summary;
+    return finish(summary);
   } catch (e) {
     summary.reason = "error: " + String(e && e.message).slice(0, 200);
-    return summary;
+    return finish(summary);
   }
 }
 
