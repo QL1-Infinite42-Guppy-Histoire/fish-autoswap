@@ -36,6 +36,23 @@ pragma solidity ^0.8.20;
 ///    router's WETH() value, which on this DEX is the 0xEeee...EEeE
 ///    sentinel. For a native target the last path element must equal
 ///    router.WETH().
+///
+/// FISH transfer burn (v2 — fee-on-transfer safe):
+///  - The FISH token itself burns 25% of every transfer to a
+///    non-exempt address (transfers to DEX pairs and to the router
+///    are exempt and arrive in full). This contract is NOT exempt,
+///    so of the amount pulled from the user only 75% arrives here.
+///    The burned 25% is a property of the FISH token — it is not a
+///    fee taken by this contract, and this contract keeps nothing.
+///  - v1 assumed the pulled amount arrived in full and then tried to
+///    forward that full amount to the router, which made execute()
+///    revert every time: v1 could never execute a single swap.
+///  - v2 measures what ACTUALLY arrived (the contract's FISH balance
+///    difference across the pull) and swaps exactly that amount;
+///    the slippage floor is computed from a quote on the received
+///    amount. The user's percent / daily cap apply to the amount
+///    pulled from their wallet (before the burn), exactly as
+///    registered; the swap itself then covers the 75% that arrived.
 
 interface IERC20 {
     function balanceOf(address account) external view returns (uint256);
@@ -135,6 +152,9 @@ contract FishAutoSwap {
 
     event Registered(address indexed user, address targetToken, uint256 percentBps, uint256 dailyCap, uint256 slippageBps);
     event Disabled(address indexed user);
+    /// @notice amountIn is the amount ACTUALLY swapped — what arrived
+    ///         at this contract after the FISH transfer burn (75% of
+    ///         the amount pulled from the user). See Pulled.
     event Executed(
         address indexed user,
         address targetToken,
@@ -143,6 +163,12 @@ contract FishAutoSwap {
         uint256 pathLength,
         uint256 timestamp
     );
+    /// @notice The pull from the user, before and after the FISH
+    ///         token's own 25% transfer burn: grossAmount left the
+    ///         user's wallet, receivedAmount arrived here and is the
+    ///         amount that gets swapped. The difference is burned by
+    ///         the FISH token itself; this contract keeps nothing.
+    event Pulled(address indexed user, uint256 grossAmount, uint256 receivedAmount);
     event KeeperChanged(address indexed oldKeeper, address indexed newKeeper);
     event PausedChanged(bool paused);
     event GasDeposited(address indexed user, uint256 amount, uint256 newCredit);
@@ -279,8 +305,12 @@ contract FishAutoSwap {
         uint256 today = block.timestamp / 86400;
         require(lastExecutedDay[user] != today, "FishAutoSwap: already executed today");
 
-        uint256 amountIn = _amountIn(user, cfg, grossMintToday);
-        require(amountIn > 0, "FishAutoSwap: nothing to swap");
+        // Amount to PULL from the user (percent / cap / balance /
+        // allowance). Because of the FISH transfer burn only 75% of
+        // this arrives at the contract; _swap measures the received
+        // amount and swaps exactly that (see the header note).
+        uint256 grossAmount = _amountIn(user, cfg, grossMintToday);
+        require(grossAmount > 0, "FishAutoSwap: nothing to swap");
 
         // The user pays their own execution gas from prepaid credit.
         // Checked up front, but charged only after the swap succeeds —
@@ -289,14 +319,10 @@ contract FishAutoSwap {
 
         _validatePath(cfg.targetToken, path);
 
-        uint256[] memory amounts = ROUTER.getAmountsOut(amountIn, path);
-        uint256 amountOutMin = (amounts[amounts.length - 1] * (BPS - cfg.slippageBps)) / BPS;
-        require(amountOutMin > 0, "FishAutoSwap: quote is zero");
-
         // Checks-effects-interactions: mark the day before moving funds.
         lastExecutedDay[user] = today;
 
-        uint256 amountOut = _swap(user, cfg.targetToken, amountIn, amountOutMin, path);
+        (uint256 amountIn, uint256 amountOut) = _swap(user, cfg, grossAmount, path);
 
         // Swap succeeded: pay exactly gasStipend of the user's own
         // credit to the keeper (msg.sender) who paid this run's gas.
@@ -324,26 +350,54 @@ contract FishAutoSwap {
         if (amountIn > allow) amountIn = allow;
     }
 
-    /// @dev Pull the user's FISH, approve the router for exactly amountIn,
-    ///      and swap with proceeds going straight to the user.
+    /// @dev Pull `grossAmount` of the user's FISH, measure what actually
+    ///      arrived (the FISH token burns 25% of the transfer to this
+    ///      non-exempt contract, so the received amount is 75%), quote
+    ///      and swap exactly the received amount with proceeds going
+    ///      straight to the user. Any revert anywhere in execute()
+    ///      unwinds the pull as well, so a failed run moves nothing.
+    /// @return received The amount that arrived and was swapped.
+    /// @return amountOut The swap output delivered to the user.
     function _swap(
         address user,
-        address targetToken,
-        uint256 amountIn,
-        uint256 amountOutMin,
+        Config memory cfg,
+        uint256 grossAmount,
         address[] calldata path
-    ) internal returns (uint256 amountOut) {
-        require(FISH.transferFrom(user, address(this), amountIn), "FishAutoSwap: transferFrom failed");
-        require(FISH.approve(address(ROUTER), amountIn), "FishAutoSwap: approve failed");
+    ) internal returns (uint256 received, uint256 amountOut) {
+        uint256 balanceBefore = FISH.balanceOf(address(this));
+        require(FISH.transferFrom(user, address(this), grossAmount), "FishAutoSwap: transferFrom failed");
+        received = FISH.balanceOf(address(this)) - balanceBefore;
+        require(received > 0, "FishAutoSwap: nothing received");
+        emit Pulled(user, grossAmount, received);
+
+        // The quote — and therefore the slippage floor — is computed
+        // on the amount that will really be swapped (the received
+        // amount), not on the pre-burn pull amount.
+        uint256 amountOutMin = _minOut(received, cfg.slippageBps, path);
+
+        require(FISH.approve(address(ROUTER), received), "FishAutoSwap: approve failed");
         uint256[] memory result;
-        if (targetToken == address(0)) {
-            result = ROUTER.swapExactTokensForETH(amountIn, amountOutMin, path, user, block.timestamp + 600);
+        if (cfg.targetToken == address(0)) {
+            result = ROUTER.swapExactTokensForETH(received, amountOutMin, path, user, block.timestamp + 600);
         } else {
-            result = ROUTER.swapExactTokensForTokens(amountIn, amountOutMin, path, user, block.timestamp + 600);
+            result = ROUTER.swapExactTokensForTokens(received, amountOutMin, path, user, block.timestamp + 600);
         }
         // Clear any leftover router allowance (should be fully consumed).
         FISH.approve(address(ROUTER), 0);
-        return result[result.length - 1];
+        return (received, result[result.length - 1]);
+    }
+
+    /// @dev Slippage floor for swapping `amountIn` along `path`, from the
+    ///      router's live quote. Reverts when the quote itself is zero.
+    function _minOut(uint256 amountIn, uint256 slippageBps, address[] calldata path)
+        internal
+        view
+        returns (uint256)
+    {
+        uint256[] memory amounts = ROUTER.getAmountsOut(amountIn, path);
+        uint256 min = (amounts[amounts.length - 1] * (BPS - slippageBps)) / BPS;
+        require(min > 0, "FishAutoSwap: quote is zero");
+        return min;
     }
 
     function _validatePath(address targetToken, address[] calldata path) internal view {
