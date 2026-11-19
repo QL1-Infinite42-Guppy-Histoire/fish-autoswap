@@ -77,3 +77,8 @@
 - 他のツールサイト（CAT42請求等）と同仕様に統一: フォント Kanit + M PLUS Rounded 1c（Google Fonts読込を en/ja/admin に追加）、鮮やかな青グラデーション＋立体ボタン（下端の濃い縁＋押し込みアニメーション）、登録ボタンは緑グラデーション、カード角丸24px＋柔らかい影、ライト背景は淡いグラデーション、チップ/小ボタンもピル型＋立体縁、入力欄角丸16px＋フォーカスリング、手順リストは丸数字バッジ化、接続ボタンにウォレットアイコン（CSS ::before、JSのtextContent書換と競合しない方式）。
 - 表示層のみ: 全セレクタ保持（差分は #connectBtn::before の追加のみ）、ID・JS・文言・テーマ変数の挙動・PCグリッド配置は不変。style.css?v=2。
 - 検証: verify-usable / verify-board / verify-wallet-ux 合格、verify-maintenance は通常スキップ。公開後に実物一致を確認。
+
+## 独自ドメイン fish.id42.win（2026-11-19 20:17 完了）
+- ユーザー指示「このurlをFish.id42.winにしたい」。GitHub側: docs/CNAME（fish.id42.win）を追加しPagesに認識済み。DNS: 当方のCloudflareトークンはWorkers専用権限でDNS変更不可（403確認）のため、CNAMEレコード（fish → ql1-infinite42-guppy-histoire.github.io、プロキシON＝cat.id42.winと同方式）はユーザーが管理画面で追加。
+- 確認済み: DNS解決（Cloudflare anycast）、https://fish.id42.win/ が200でサイト表示、app.js最新版一致、旧github.io URLは新ドメインへ301。
+- URL差し替え: fish-autoswap README、リンク集（README＋en/jaカード）、ダッシュボードPagesのカードリンク → https://fish.id42.win/ 。ダッシュボードのSpace版は再共有待ち（従来分と合わせて保留中）。

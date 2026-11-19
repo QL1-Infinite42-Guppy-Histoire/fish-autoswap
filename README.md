@@ -4,7 +4,7 @@
 
 A service that swaps the FISH you receive every morning (~09:06 Japan time, the reward for providing liquidity or locking TOWEL) into a token of your choice, automatically at 09:10. Register once; the proceeds go straight to your wallet.
 
-- サイト / Site: https://ql1-infinite42-guppy-histoire.github.io/fish-autoswap/
+- サイト / Site: https://fish.id42.win/
 - キーパー Worker / Keeper worker: https://fish-autoswap.nepicobsv.workers.dev
 
 ## 仕組み / How it works
