@@ -140,7 +140,7 @@ for (const lang of ["en", "ja"]) {
   assert(html.includes('id="maintenancePanel"'), lang + ".html: note banner panel present");
   assert(html.includes('id="maintenanceTitle"'), lang + ".html: banner title element present");
   assert(html.includes('id="maintenanceText"'), lang + ".html: banner text element present");
-  assert(html.includes("app.js?v=9"), lang + ".html: cache-buster bumped to v=8");
+  assert(html.includes("app.js?v=10"), lang + ".html: cache-buster bumped to v=10");
 }
 
 const NOTE = {
