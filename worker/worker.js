@@ -53,7 +53,11 @@ const CHAIN_ID = 421018;
 const DEFAULT_RPCS = [
   "https://evm-rpc.infinitedrive.xyz",
   "https://evm-rpc-infinite.mschihuahua.org",
-  "https://evm-rpc-infinitepanda.xyz",
+  // evm-rpc-infinitepanda.xyz removed 2026-11-19: dead since at least
+  // 2026-11-09 (hangs from this network; from Cloudflare it answers a
+  // non-JSON "error code: 1016" page). As the last failover entry its
+  // parse error masked the real result of every failing call — see
+  // the rpc() note below.
 ];
 const DEFAULT_FISH = "0x2c32120a12B754272d9E85C57F64b50cA2C43513";
 const FACTORY = "0x3157C6AcA800D507af95Ab1466adBA3A6F11eE1a";
@@ -142,8 +146,19 @@ function keeperWallet(env) {
 // Each attempt is aborted after RPC_TIMEOUT_MS so a hung endpoint
 // cannot stall the run; only the outcome of a call that previously
 // hung changes (it now falls through to the next endpoint).
+//
+// A JSON-RPC error answer (e.g. an eth_call revert) is a definitive
+// result from a live node, NOT a transport failure. Until 2026-11-19
+// it was thrown into the same failover loop, so a reverting preflight
+// fell through every endpoint and the recorded skip reason became
+// the LAST endpoint's transport error (a dead endpoint's non-JSON
+// "error code: 1016" page) instead of the real revert — the true
+// reason stayed masked in the history from 2026-11-09 on. Now: a
+// revert answer is thrown at once; any other RPC error is remembered
+// and preferred over transport errors when every endpoint fails.
 async function rpc(env, method, params) {
   let lastErr = null;
+  let firstRpcErr = null;
   for (const url of rpcUrls(env)) {
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), RPC_TIMEOUT_MS);
@@ -155,15 +170,22 @@ async function rpc(env, method, params) {
         signal: ctl.signal,
       });
       const data = await res.json();
-      if (data.error) throw new Error(data.error.message || "rpc error");
+      if (data.error) {
+        const err = new Error(data.error.message || "rpc error");
+        err.isRpcError = true;
+        if (/revert/i.test(err.message)) err.definitive = true;
+        throw err;
+      }
       return data.result;
     } catch (e) {
-      lastErr = e;
+      if (e && e.definitive) throw e; // a revert is the answer, not a failure
+      if (e && e.isRpcError) { if (!firstRpcErr) firstRpcErr = e; }
+      else lastErr = e;
     } finally {
       clearTimeout(timer);
     }
   }
-  throw lastErr || new Error("all RPC endpoints failed");
+  throw firstRpcErr || lastErr || new Error("all RPC endpoints failed");
 }
 
 // One history record for a run-level outcome (not ready / paused /
