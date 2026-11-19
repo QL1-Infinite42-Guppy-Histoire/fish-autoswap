@@ -1,4 +1,10 @@
-// Maintenance-mode checks for docs/app.js (MAINTENANCE = true):
+// Maintenance-mode checks for docs/app.js (MAINTENANCE = true).
+// Since 2026-11-19 the service ships in usable-with-note mode
+// (MAINTENANCE = false; see verify-usable.mjs). This harness SKIPS
+// cleanly while the flag is false and becomes authoritative again if
+// the owner ever re-pauses the service by setting it back to true.
+// (Its app.js?v=7 assertion is likewise maintenance-era; re-check the
+// cache-buster when reusing it.)
 //   - both HTML files carry the maintenance banner panel
 //   - with a connected wallet: write buttons (approve / register /
 //     disable / revoke / gas deposit + its amount input) are disabled
@@ -123,6 +129,15 @@ function buildEnv(lang) {
   vm.runInContext(src, sandbox);
   INITIALLY_HIDDEN.forEach((id) => { documentStub.getElementById(id).hidden = true; });
   return { sandbox, els, documentStub };
+}
+
+/* Skip while the service is in usable mode (MAINTENANCE = false). */
+{
+  const src = readFileSync(new URL("../docs/app.js", import.meta.url), "utf8");
+  if (/var MAINTENANCE = false;/.test(src)) {
+    console.log("SKIP: MAINTENANCE = false (usable mode) — maintenance checks do not apply.");
+    process.exit(0);
+  }
 }
 
 /* HTML-level: the banner panel exists in both language pages. */

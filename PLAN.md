@@ -51,3 +51,8 @@
 
 ## メンテナンスモード（オーナー指示 2026-11-09）
 - 初回実行が成立しなかった原因が未解明のため、サイトは公開したまま「🛠️ メンテナンス中」表示に切り替え。新規登録・設定変更・許可・ガス代の預け入れは停止し、預けた [42] の引き出し（withdrawGas）と読み取り専用表示だけを継続利用可能にした。制御は docs/app.js の MAINTENANCE フラグ（解除は false に戻すだけ）。検証: tools/verify-maintenance.mjs（バナー・書き込み停止・引き出しの end-to-end を EN/JA で確認）。
+
+## 使用可能＋メンテナンス注記モード（オーナー指示 2026-11-19）
+- 「使用可能ですが、メンテナンス中ですので不具合の可能性があります」（EN: "Usable, but still under maintenance — bugs may occur."）の注記バナー付きで使用可能に戻した。MAINTENANCE = false（書き込み全再開）、バナーは注記文言に差し替え、app.js?v=8。検証: tools/verify-usable.mjs（注記文言・全書き込み有効・預け入れ/引き出し end-to-end を EN/JA で確認、全合格）。verify-maintenance.mjs はフラグ false の間は自動スキップする。
+- 正直な現状: 自動スワップの実行そのものは v1 では成立しない（25%バーン、2026-11-09 診断確定）。実際に動き始めるのは v2 デプロイ＋付け替え（Worker bindings.json と docs/app.js の CONFIG.CONTRACT_ADDRESS）＋ setKeeper ＋再登録/再入金が揃ってから。v1 への登録・預け入れは v2 移行時にやり直しが必要（預けた [42] は v1 からいつでも引き出し可）。
+- 同日、Worker の rpc() フェイルオーバーが revert を通信エラーで上書きするバグも修正（履歴の理由が "error code: 1016" に化けていた件）＋ 死んだ infinitepanda RPC を Worker / サイト双方から除去。

@@ -20,15 +20,28 @@ var CONFIG = {
    action is disabled EXCEPT withdrawing deposited gas money ([42]) —
    users must always be able to take their own deposit back. All reads,
    the wallet connection and the withdrawal flow work exactly as before.
-   Set back to false to reopen the service. */
-var MAINTENANCE = true;
+   Set back to false to reopen the service.
+
+   Owner decision 2026-11-19: reopened as USABLE with a standing
+   maintenance note (the banner below now reads "usable, but still
+   under maintenance — bugs may occur" in both languages). MAINTENANCE
+   is false again, so registrations, settings, approvals and gas
+   deposits are all enabled. Honest internal note: the auto-swap
+   EXECUTION itself still cannot succeed on the v1 contract below
+   (FISH's 25% transfer burn makes execute() revert — diagnosed
+   2026-11-09); it starts working when the owner deploys the v2
+   contract and CONFIG.CONTRACT_ADDRESS + the Worker are switched to
+   it. The banner note is the public wording the owner chose for this
+   in-between state. */
+var MAINTENANCE = false;
 
 var FISH = "0x2c32120a12b754272d9e85c57f64b50ca2c43513";
 var CHAIN_ID_HEX = "0x66c9a"; // 421018
 var RPCS = [
   "https://evm-rpc.infinitedrive.xyz",
-  "https://evm-rpc-infinite.mschihuahua.org",
-  "https://evm-rpc-infinitepanda.xyz"
+  "https://evm-rpc-infinite.mschihuahua.org"
+  // evm-rpc-infinitepanda.xyz removed 2026-11-19: dead since at least
+  // 2026-11-09 (same removal as the keeper Worker).
 ];
 var EXPLORER = "https://scan.infinitedrive.xyz";
 var TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
@@ -110,9 +123,9 @@ var I18N = {
     connectFirst: "Connect your wallet to see your numbers.",
     regTitle: "Your auto-swap registration",
     comingSoon: "🚧 Coming soon — registration is not open yet. The contract is being prepared. Everything else on this page (your drop, the countdowns) already works.",
-    maintenanceTitle: "🛠️ Under maintenance",
-    maintenanceText: "The auto-swap service is currently under maintenance. New registrations, settings changes and gas deposits are paused. You can still withdraw your deposited [42] at any time.",
-    statusMaintenance: "🛠️ Under maintenance",
+    maintenanceTitle: "🛠️ Notice",
+    maintenanceText: "Usable, but still under maintenance — bugs may occur.",
+    statusMaintenance: "🛠️ Usable (under maintenance)",
     maintenanceRegNote: "🛠️ Under maintenance — new registrations, settings changes, approvals and gas deposits are paused. The only action available is withdrawing your deposited [42] (step ③, “Take back”).",
     currentTitle: "Your current settings",
     notRegistered: "Not registered yet. Fill in the form below and do steps ① and ②.",
@@ -258,9 +271,9 @@ var I18N = {
     connectFirst: "ウォレットをつなぐと、あなたの数字が見られます。",
     regTitle: "自動交換の登録",
     comingSoon: "🚧 準備中 — 登録はまだ始まっていません。コントラクトの準備ができ次第、ここで登録できるようになります。このページの他の部分（今日の配布・カウントダウン）はすでに動いています。",
-    maintenanceTitle: "🛠️ メンテナンス中",
-    maintenanceText: "自動スワップは現在メンテナンス中です。新規登録・設定変更・ガス代の預け入れは停止しています。預けた [42] の引き出しはいつでもできます。",
-    statusMaintenance: "🛠️ メンテナンス中",
+    maintenanceTitle: "🛠️ お知らせ",
+    maintenanceText: "使用可能ですが、メンテナンス中ですので不具合の可能性があります。",
+    statusMaintenance: "🛠️ 使用可能（メンテナンス中）",
     maintenanceRegNote: "🛠️ メンテナンス中 — 新規登録・設定変更・許可・ガス代の預け入れは停止しています。使えるのは、預けた [42] の引き出し（手順③の「取り戻す」）だけです。",
     currentTitle: "いまの設定",
     notRegistered: "まだ登録されていません。下のフォームを入れて、①と②を行ってください。",
