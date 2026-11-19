@@ -10,7 +10,7 @@
    drop display, countdowns and explanations already work. */
 
 var CONFIG = {
-  CONTRACT_ADDRESS: "0x478bd3bbd12b906a83c803aa6c14684d150ab994", // deployed 2026-11-07 by the owner
+  CONTRACT_ADDRESS: "0x67e99d8a7bf5f71370391732847e038578f1290d", // v2, deployed 2026-11-19 by the owner from a dedicated wallet (fee-on-transfer safe; v1 was 0x478bd3bbd12b906a83c803aa6c14684d150ab994)
   WORKER_URL: "https://fish-autoswap.nepicobsv.workers.dev"
 };
 

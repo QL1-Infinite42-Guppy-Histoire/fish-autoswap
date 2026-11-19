@@ -219,7 +219,7 @@ async function testMaintenance(lang) {
   const tx = sentTxs[0];
   assert(String(tx.data).startsWith("0x91657544"),
     lang + ": withdrawal calls withdrawGas (0x91657544): " + String(tx.data).slice(0, 10));
-  assert(String(tx.to).toLowerCase() === "0x478bd3bbd12b906a83c803aa6c14684d150ab994",
+  assert(String(tx.to).toLowerCase() === "0x67e99d8a7bf5f71370391732847e038578f1290d",
     lang + ": withdrawal targets the AutoSwap contract");
 }
 

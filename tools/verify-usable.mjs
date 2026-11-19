@@ -1,6 +1,6 @@
 // Usable-with-maintenance-note checks for docs/app.js
 // (MAINTENANCE = false, owner decision 2026-11-19):
-//   - both HTML files carry the note banner panel, bumped to app.js?v=8
+//   - both HTML files carry the note banner panel, bumped to app.js?v=9
 //   - the banner shows the owner's note wording (JA/EN)
 //   - with a connected wallet: every write button (approve / register /
 //     disable / revoke / gas deposit + its amount input) is ENABLED
@@ -140,14 +140,14 @@ for (const lang of ["en", "ja"]) {
   assert(html.includes('id="maintenancePanel"'), lang + ".html: note banner panel present");
   assert(html.includes('id="maintenanceTitle"'), lang + ".html: banner title element present");
   assert(html.includes('id="maintenanceText"'), lang + ".html: banner text element present");
-  assert(html.includes("app.js?v=8"), lang + ".html: cache-buster bumped to v=8");
+  assert(html.includes("app.js?v=9"), lang + ".html: cache-buster bumped to v=8");
 }
 
 const NOTE = {
   en: "Usable, but still under maintenance — bugs may occur.",
   ja: "使用可能ですが、メンテナンス中ですので不具合の可能性があります。",
 };
-const CONTRACT = "0x478bd3bbd12b906a83c803aa6c14684d150ab994";
+const CONTRACT = "0x67e99d8a7bf5f71370391732847e038578f1290d";
 
 async function testUsable(lang) {
   console.log("scenario: usable-with-note mode (" + lang + ")");

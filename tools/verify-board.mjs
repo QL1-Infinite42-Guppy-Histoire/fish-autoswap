@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
-const CONTRACT = "0x478bd3bbd12b906a83c803aa6c14684d150ab994";
+const CONTRACT = "0x67e99d8a7bf5f71370391732847e038578f1290d"; // v2 (2026-11-19); v1 was 0x478bd3bb...
 const RPC = "https://evm-rpc.infinitedrive.xyz";
 const EXPLORER = "https://scan.infinitedrive.xyz";
 
