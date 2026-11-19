@@ -114,6 +114,7 @@ var I18N = {
     yourWalletLabel: "Your wallet",
     rescanBtn: "Check again",
     switchChainBtn: "Switch to 42 Chain",
+    switchDoneBtn: "Switched",
     dropTitle: "Your FISH today",
     dropTodayLabel: "FISH that arrived today",
     fishBalanceLabel: "Your FISH balance",
@@ -151,6 +152,7 @@ var I18N = {
     approveNote: "This gives the swap contract permission to use your FISH — only up to the amount below, and only FISH. The standard amount is your daily limit × 30 days, so you do not have to redo it every day. You can change it.",
     approveAmountLabel: "Approve amount (FISH)",
     approveBtn: "Approve",
+    approveDoneBtn: "Approved",
     stepRegisterTitle: "Step ② — Register",
     registerBtn: "Register / Update settings",
     stepGasTitle: "Step ③ — Deposit gas money ([42])",
@@ -262,6 +264,7 @@ var I18N = {
     yourWalletLabel: "あなたのウォレット",
     rescanBtn: "もう一度調べる",
     switchChainBtn: "42 Chain に切り替える",
+    switchDoneBtn: "切り替えました",
     dropTitle: "今日のあなたの FISH",
     dropTodayLabel: "今日届いた FISH",
     fishBalanceLabel: "いま持っている FISH",
@@ -299,6 +302,7 @@ var I18N = {
     approveNote: "交換用コントラクトに、あなたの FISH を使ってよい許可を出します。対象は FISH だけ、量も下の金額までだけです。標準は「1日の上限 × 30日分」で、毎日やり直さなくて済みます。金額は変えられます。",
     approveAmountLabel: "許可する量（FISH）",
     approveBtn: "許可する",
+    approveDoneBtn: "許可しました",
     stepRegisterTitle: "手順 ② — 登録する",
     registerBtn: "登録 / 設定を更新",
     stepGasTitle: "手順 ③ — ガス代を預ける（[42]）",
@@ -765,6 +769,7 @@ async function connectWith(p, btn) {
     if (!ok) {
       res.className = "result error";
       res.textContent = t("wrongChain");
+      syncSwitchBtn(false);
       el("switchChainBtn").hidden = false;
       return;
     }
@@ -798,6 +803,7 @@ async function tryAutoReconnect() {
     if (cid && cid !== CHAIN_ID_HEX) {
       res.className = "result error";
       res.textContent = t("wrongChain");
+      syncSwitchBtn(false);
       el("switchChainBtn").hidden = false;
       return;
     }
@@ -1084,6 +1090,8 @@ async function loadOnChain() {
       var out = await ethCall(CONFIG.CONTRACT_ADDRESS, SEL.configOf + encodeAddress(account));
       currentConfig = decodeConfig(out);
       var allow = await tokenAllowance(FISH, account, CONFIG.CONTRACT_ADDRESS);
+      lastAllowance = allow;
+      syncApproveBtn();
       renderConfig(allow);
       var done = await ethCall(CONFIG.CONTRACT_ADDRESS, SEL.executedToday + encodeAddress(account));
       el("executedLine").textContent =
@@ -1282,6 +1290,7 @@ async function loadServiceStatus() {
 /* ---------- your running status panel ---------- */
 var lastGasCredit = null;
 var lastGasStipend = null;
+var lastAllowance = null;
 var targetSymbolCache = {};
 
 /* The target token's symbol, read from the token contract itself
@@ -1503,7 +1512,7 @@ function init() {
     if (ok) {
       res.className = "result ok";
       res.textContent = t("switchOk");
-      el("switchChainBtn").hidden = true;
+      syncSwitchBtn(true);
       if (account) showAccount();
     }
   });
@@ -1551,9 +1560,10 @@ function init() {
     });
   });
 
-  el("capInput").addEventListener("input", syncApproveDefault);
+  el("capInput").addEventListener("input", function () { syncApproveDefault(); syncApproveBtn(); });
   el("approveAmount").addEventListener("input", function () {
     this.setAttribute("data-touched", "1");
+    syncApproveBtn();
   });
 
   el("approveBtn").addEventListener("click", async function () {
@@ -1695,6 +1705,31 @@ function decodeSymbol(hex) {
   } catch (e) { return null; }
 }
 
+/* Completed-action button states — display only, always derived from
+   live data, never latched. The chain-switch button flips to a
+   disabled "Switched" label once the wallet is on 42 Chain, and back
+   to the active label whenever it is shown for a wrong chain. The
+   approve button flips to a disabled "Approved" label while the
+   on-chain allowance covers the amount in the approve field, and back
+   the moment it no longer does (a bigger amount typed, the allowance
+   spent, or a revoke). Maintenance / not-ready gating owns the
+   approve button while it applies, so the sync leaves it alone then. */
+function syncSwitchBtn(done) {
+  var btn = el("switchChainBtn");
+  if (!btn) return;
+  btn.textContent = done ? t("switchDoneBtn") : t("switchChainBtn");
+  btn.disabled = !!done;
+}
+function syncApproveBtn() {
+  var btn = el("approveBtn");
+  if (!btn) return;
+  if (MAINTENANCE || !ready) return;
+  var amount = parseToken(el("approveAmount").value);
+  var done = amount !== null && amount > 0n && lastAllowance !== null && lastAllowance >= amount;
+  btn.textContent = done ? t("approveDoneBtn") : t("approveBtn");
+  btn.disabled = done;
+}
+
 function syncApproveDefault() {
   var amt = el("approveAmount");
   if (amt.getAttribute("data-touched")) return;
@@ -1713,6 +1748,8 @@ function showAccount() {
   el("myStatusMain").textContent = t("myLoading");
   el("myStatusDetail").textContent = "";
   el("myStatusNote").hidden = true;
+  lastAllowance = null;
+  syncApproveBtn();
   loadOnChain();
   loadBoard();
 }

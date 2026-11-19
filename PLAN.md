@@ -82,3 +82,9 @@
 - ユーザー指示「このurlをFish.id42.winにしたい」。GitHub側: docs/CNAME（fish.id42.win）を追加しPagesに認識済み。DNS: 当方のCloudflareトークンはWorkers専用権限でDNS変更不可（403確認）のため、CNAMEレコード（fish → ql1-infinite42-guppy-histoire.github.io、プロキシON＝cat.id42.winと同方式）はユーザーが管理画面で追加。
 - 確認済み: DNS解決（Cloudflare anycast）、https://fish.id42.win/ が200でサイト表示、app.js最新版一致、旧github.io URLは新ドメインへ301。
 - URL差し替え: fish-autoswap README、リンク集（README＋en/jaカード）、ダッシュボードPagesのカードリンク → https://fish.id42.win/ 。ダッシュボードのSpace版は再共有待ち（従来分と合わせて保留中）。
+
+## 完了済みボタンの状態表示（2026-11-19 20:47、ユーザーの実機スクショからの指示）
+- チェーン切替ボタン: 切替完了後は隠さず、文言「切り替えました／Switched」＋disabledに変更。別チェーンで表示される場面では syncSwitchBtn(false) で元の文言＋押せる状態に必ず戻す（実データ連動、chainChangedリロード後も整合）。
+- 許可ボタン: オンチェーン allowance が入力量以上なら「許可しました／Approved」＋disabled。入力を増やして allowance を超える／許可が使われる／取り消されると、loadOnChain の再読込と入力イベントで即座に元の「許可する」＋押せる状態へ復帰。アカウント切替時は lastAllowance をリセット。メンテナンス/未準備ゲーティング中はゲーティング側が優先（syncは触らない）。
+- 表示だけの変更で、切替・許可・登録のロジック自体は不変。対象はこの2ボタンのみ（登録・ガス預けは対象外）。app.js?v=11。
+- 検証: verify-usable に allowance=2000 FISH のスタブ＋状態遷移シナリオ（1500で完了状態→2500で復帰）を追加し合格。verify-wallet-ux の別チェーン復帰シナリオに完了状態の assert を追加し合格。verify-board 合格。

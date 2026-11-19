@@ -68,12 +68,18 @@ function makeDocument(els) {
   };
 }
 
-function rpcResult(method) {
+function rpcResult(method, params) {
   switch (method) {
     case "eth_blockNumber": return "0x1000";
     case "eth_getBlockByNumber":
       return { number: "0x1000", timestamp: "0x" + Math.floor(Date.now() / 1000).toString(16) };
-    case "eth_call": return "0x" + "0".repeat(64 * 6);
+    case "eth_call": {
+      const data = (params && params[0] && params[0].data) || "";
+      // The approve-button state sync reads the FISH allowance: give
+      // the test account a real one (2000 FISH) to exercise it.
+      if (data.indexOf("0xdd62ed3e") === 0) return "0x" + (2000n * (10n ** 18n)).toString(16).padStart(64, "0");
+      return "0x" + "0".repeat(64 * 6);
+    }
     case "eth_getLogs": return [];
     case "eth_getTransactionReceipt": return { status: "0x1" };
     default: return "0x";
@@ -87,9 +93,9 @@ async function fetchStub(url, opts) {
   }
   const body = JSON.parse(opts.body);
   if (Array.isArray(body)) {
-    return { json: async () => body.map((c) => ({ jsonrpc: "2.0", id: c.id, result: rpcResult(c.method) })) };
+    return { json: async () => body.map((c) => ({ jsonrpc: "2.0", id: c.id, result: rpcResult(c.method, c.params) })) };
   }
-  return { json: async () => ({ jsonrpc: "2.0", id: body.id, result: rpcResult(body.method) }) };
+  return { json: async () => ({ jsonrpc: "2.0", id: body.id, result: rpcResult(body.method, body.params) }) };
 }
 
 const INITIALLY_HIDDEN = [
@@ -140,7 +146,7 @@ for (const lang of ["en", "ja"]) {
   assert(html.includes('id="maintenancePanel"'), lang + ".html: note banner panel present");
   assert(html.includes('id="maintenanceTitle"'), lang + ".html: banner title element present");
   assert(html.includes('id="maintenanceText"'), lang + ".html: banner text element present");
-  assert(html.includes("app.js?v=10"), lang + ".html: cache-buster bumped to v=10");
+  assert(html.includes("app.js?v=11"), lang + ".html: cache-buster bumped to v=11");
 }
 
 const NOTE = {
@@ -203,6 +209,22 @@ async function testUsable(lang) {
                     "gasDepositBtn", "gasDepositAmount", "gasWithdrawBtn", "gasWithdrawAmount"]) {
     assert(E(id).disabled === false, lang + ": " + id + " NOT disabled");
   }
+
+  // Approve button mirrors the on-chain allowance (stub: 2000 FISH).
+  // An amount the allowance covers flips it to the disabled done
+  // state; raising the amount past the allowance re-enables it.
+  E("approveAmount").value = "1500";
+  E("rescanBtn").click();
+  await flush(900);
+  assert(E("approveBtn").disabled === true, lang + ": approve disabled when the allowance covers the amount");
+  assert(E("approveBtn").textContent === (lang === "ja" ? "許可しました" : "Approved"),
+    lang + ": approve shows the done label: " + E("approveBtn").textContent);
+  E("approveAmount").value = "2500";
+  E("rescanBtn").click();
+  await flush(900);
+  assert(E("approveBtn").disabled === false, lang + ": approve re-enabled above the allowance");
+  assert(E("approveBtn").textContent === (lang === "ja" ? "許可する" : "Approve"),
+    lang + ": approve label restored: " + E("approveBtn").textContent);
 
   // Gas deposit sends exactly one depositGas tx carrying the value.
   E("gasDepositAmount").value = "0.15";

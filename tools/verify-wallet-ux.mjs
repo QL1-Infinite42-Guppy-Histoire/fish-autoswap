@@ -243,6 +243,9 @@ async function testAutoRestoreWrongChain() {
   await flush(300);
   assert(mm.calls.includes("wallet_switchEthereumChain"), "manual switch went through the provider");
   assert(env.els.accountBox.hidden === false, "account box shown after switch");
+  assert(env.els.switchChainBtn.disabled === true, "switch button disabled once switched");
+  assert(env.els.switchChainBtn.textContent === "切り替えました",
+    "switch button shows the done label: " + env.els.switchChainBtn.textContent);
 }
 
 async function testSingleProviderPending() {
