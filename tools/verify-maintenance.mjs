@@ -1,11 +1,13 @@
 // Maintenance-mode checks for docs/app.js (MAINTENANCE = true).
-// Since 2026-11-19 the service ships in usable-with-note mode
-// (MAINTENANCE = false; see verify-usable.mjs). This harness SKIPS
-// cleanly while the flag is false and becomes authoritative again if
-// the owner ever re-pauses the service by setting it back to true.
+// The service ran usable-with-note from 2026-11-19 and maintenance
+// ENDED on 2026-11-20 (MAINTENANCE = false; see verify-usable.mjs).
+// This harness SKIPS cleanly while the flag is false and becomes
+// authoritative again if the owner ever re-pauses the service by
+// setting it back to true. NOTE: the old banner panel was removed
+// from the HTML on 2026-11-20 — maintenance mode now presents only
+// through the status label and the registration note.
 // (Its app.js?v=7 assertion is likewise maintenance-era; re-check the
 // cache-buster when reusing it.)
-//   - both HTML files carry the maintenance banner panel
 //   - with a connected wallet: write buttons (approve / register /
 //     disable / revoke / gas deposit + its amount input) are disabled
 //     and clicking one sends NO transaction
@@ -140,12 +142,10 @@ function buildEnv(lang) {
   }
 }
 
-/* HTML-level: the banner panel exists in both language pages. */
+/* HTML-level: the retired banner panel stays absent in both pages. */
 for (const lang of ["en", "ja"]) {
   const html = readFileSync(new URL("../docs/" + lang + ".html", import.meta.url), "utf8");
-  assert(html.includes('id="maintenancePanel"'), lang + ".html: maintenance banner panel present");
-  assert(html.includes('id="maintenanceTitle"'), lang + ".html: banner title element present");
-  assert(html.includes('id="maintenanceText"'), lang + ".html: banner text element present");
+  assert(!html.includes('id="maintenancePanel"'), lang + ".html: maintenance banner panel removed");
   assert(html.includes("app.js?v=7"), lang + ".html: cache-buster bumped to v=7");
 }
 
@@ -175,13 +175,8 @@ async function testMaintenance(lang) {
 
   assert(els.accountBox.hidden === false, lang + ": wallet auto-reconnected (reads keep working)");
 
-  // Banner content filled from i18n.
-  assert(els.maintenanceTitle.textContent.includes("🛠️"), lang + ": banner title: " + els.maintenanceTitle.textContent);
-  assert(els.maintenanceText.textContent.length > 20, lang + ": banner text present");
-  // app.js never touches the panel element itself (it is plain visible
-  // markup); materialise it the way the real page provides it.
-  assert(env.documentStub.getElementById("maintenancePanel").hidden === false,
-    lang + ": banner panel visible");
+  // The banner was retired on 2026-11-20: app.js no longer fills
+  // any banner elements even in maintenance mode.
 
   // Status banner: maintenance label, dot not green, schedule hidden.
   assert(els.statusText.textContent.includes("🛠️"), lang + ": status shows maintenance: " + els.statusText.textContent);

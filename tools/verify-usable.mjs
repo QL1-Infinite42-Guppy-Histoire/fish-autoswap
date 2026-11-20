@@ -1,7 +1,8 @@
-// Usable-with-maintenance-note checks for docs/app.js
-// (MAINTENANCE = false, owner decision 2026-11-19):
-//   - both HTML files carry the note banner panel, bumped to app.js?v=9
-//   - the banner shows the owner's note wording (JA/EN)
+// Live-service checks for docs/app.js (MAINTENANCE = false).
+// History: usable-with-maintenance-note from 2026-11-19; maintenance
+// ENDED by owner decision on 2026-11-20 after the first successful
+// live auto-swap, and the note banner was removed entirely:
+//   - neither HTML file carries the retired banner panel (app.js?v=13)
 //   - with a connected wallet: every write button (approve / register /
 //     disable / revoke / gas deposit + its amount input) is ENABLED
 //   - the status banner follows the Worker status (running, green dot)
@@ -144,23 +145,17 @@ function buildEnv(lang) {
   assert(/var MAINTENANCE = false;/.test(src), "app.js: MAINTENANCE flag is false (usable mode)");
 }
 
-/* HTML-level: the note banner panel exists in both language pages. */
+/* HTML-level: the retired maintenance banner is gone from both pages. */
 for (const lang of ["en", "ja"]) {
   const html = readFileSync(new URL("../docs/" + lang + ".html", import.meta.url), "utf8");
-  assert(html.includes('id="maintenancePanel"'), lang + ".html: note banner panel present");
-  assert(html.includes('id="maintenanceTitle"'), lang + ".html: banner title element present");
-  assert(html.includes('id="maintenanceText"'), lang + ".html: banner text element present");
-  assert(html.includes("app.js?v=12"), lang + ".html: cache-buster bumped to v=12");
+  assert(!html.includes('id="maintenancePanel"'), lang + ".html: maintenance banner panel removed");
+  assert(!html.includes('id="maintenanceText"'), lang + ".html: banner text element removed");
+  assert(html.includes("app.js?v=13"), lang + ".html: cache-buster bumped to v=13");
 }
-
-const NOTE = {
-  en: "Usable, but still under maintenance — bugs may occur.",
-  ja: "使用可能ですが、メンテナンス中ですので不具合の可能性があります。",
-};
 const CONTRACT = "0x67e99d8a7bf5f71370391732847e038578f1290d";
 
 async function testUsable(lang) {
-  console.log("scenario: usable-with-note mode (" + lang + ")");
+  console.log("scenario: live service mode (" + lang + ")");
   const ADDR = "0x7777777777777777777777777777777777777777";
   const sentTxs = [];
   const provider = {
@@ -185,11 +180,8 @@ async function testUsable(lang) {
 
   assert(els.accountBox.hidden === false, lang + ": wallet auto-reconnected (reads keep working)");
 
-  // Banner shows the owner's note wording.
-  assert(els.maintenanceText.textContent === NOTE[lang],
-    lang + ": banner text is the usable note: " + els.maintenanceText.textContent);
-  assert(env.documentStub.getElementById("maintenancePanel").hidden === false,
-    lang + ": banner panel visible");
+  // No maintenance banner exists anymore (removed 2026-11-20); the
+  // status assertions below pin the normal live-service presentation.
 
   // Status banner follows the Worker (stub: ready) — running + green dot,
   // NOT the forced maintenance label. Schedule displays are back.
@@ -271,4 +263,4 @@ async function testUsable(lang) {
 
 await testUsable("en");
 await testUsable("ja");
-console.log("USABLE VERIFY OK — note banner, enabled writes, deposit + withdrawal all pass.");
+console.log("USABLE VERIFY OK — live service (no maintenance banner), enabled writes, deposit + withdrawal all pass.");

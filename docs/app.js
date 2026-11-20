@@ -33,7 +33,15 @@ var CONFIG = {
    2026-11-09); it starts working when the owner deploys the v2
    contract and CONFIG.CONTRACT_ADDRESS + the Worker are switched to
    it. The banner note is the public wording the owner chose for this
-   in-between state. */
+   in-between state.
+
+   Owner decision 2026-11-20: maintenance ENDED. The first live
+   auto-swap succeeded that morning (09:10 run; the full drop was
+   processed and the user's FISH balance went to zero), so the
+   banner was removed entirely and the service now presents as a
+   normal live service. The MAINTENANCE flag stays in the code
+   purely as an emergency brake (it gates writes via the status
+   label and the registration note; there is no banner anymore). */
 var MAINTENANCE = false;
 
 var FISH = "0x2c32120a12b754272d9e85c57f64b50ca2c43513";
@@ -125,8 +133,6 @@ var I18N = {
     connectFirst: "Connect your wallet to see your numbers.",
     regTitle: "Your auto-swap registration",
     comingSoon: "🚧 Coming soon — registration is not open yet. The contract is being prepared. Everything else on this page (your drop, the countdowns) already works.",
-    maintenanceTitle: "🛠️ Notice",
-    maintenanceText: "Usable, but still under maintenance — bugs may occur.",
     statusMaintenance: "🛠️ Usable (under maintenance)",
     maintenanceRegNote: "🛠️ Under maintenance — new registrations, settings changes, approvals and gas deposits are paused. The only action available is withdrawing your deposited [42] (step ③, “Take back”).",
     currentTitle: "Your current settings",
@@ -279,8 +285,6 @@ var I18N = {
     connectFirst: "ウォレットをつなぐと、あなたの数字が見られます。",
     regTitle: "自動交換の登録",
     comingSoon: "🚧 準備中 — 登録はまだ始まっていません。コントラクトの準備ができ次第、ここで登録できるようになります。このページの他の部分（今日の配布・カウントダウン）はすでに動いています。",
-    maintenanceTitle: "🛠️ お知らせ",
-    maintenanceText: "使用可能ですが、メンテナンス中ですので不具合の可能性があります。",
     statusMaintenance: "🛠️ 使用可能（メンテナンス中）",
     maintenanceRegNote: "🛠️ メンテナンス中 — 新規登録・設定変更・許可・ガス代の預け入れは停止しています。使えるのは、預けた [42] の引き出し（手順③の「取り戻す」）だけです。",
     currentTitle: "いまの設定",
@@ -934,8 +938,6 @@ function applyMaintenance() {
 
 function applyI18n() {
   document.title = t("pageTitle") + " — 42 Chain";
-  setText("maintenanceTitle", "maintenanceTitle");
-  setText("maintenanceText", "maintenanceText");
   setText("pageTitle", "pageTitle");
   setText("pageSub", "pageSub");
   setText("howTitle", "howTitle");
