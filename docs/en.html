@@ -228,6 +228,21 @@
     <button type="button" id="gasWithdrawBtn" class="small-btn">Take back</button>
     <div id="gasResult" class="result" role="status"></div>
 
+    <div id="v1Panel" hidden>
+      <h3 id="v1Title">Gas money left on the old version</h3>
+      <p class="note" id="v1Note"></p>
+      <div class="info-grid">
+        <div class="info-card">
+          <div class="i-label" id="v1CreditLabel">Left on the old version (v1)</div>
+          <div class="i-value" id="v1Credit">—</div>
+        </div>
+      </div>
+      <div class="row">
+        <button type="button" id="v1WithdrawBtn" class="small-btn">Take it all back</button>
+      </div>
+      <div id="v1Result" class="result" role="status"></div>
+    </div>
+
     <h3 id="stopTitle">Stop the service</h3>
     <div class="row">
       <button type="button" id="disableBtn" class="small-btn danger">Turn OFF auto-swap</button>
@@ -279,7 +294,7 @@
   <p><a href="admin.html" id="ownerLink">Owner</a></p>
 </footer>
 
-<script src="app.js?v=11"></script>
+<script src="app.js?v=12"></script>
 <script>
 (function(){
   var btn=document.getElementById("themeToggle");

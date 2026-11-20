@@ -11,6 +11,7 @@
 
 var CONFIG = {
   CONTRACT_ADDRESS: "0x67e99d8a7bf5f71370391732847e038578f1290d", // v2, deployed 2026-11-19 by the owner from a dedicated wallet (fee-on-transfer safe; v1 was 0x478bd3bbd12b906a83c803aa6c14684d150ab994)
+  V1_CONTRACT_ADDRESS: "0x478bd3bbd12b906a83c803aa6c14684d150ab994", // retired v1 — only used so users can take back gas money left on it
   WORKER_URL: "https://fish-autoswap.nepicobsv.workers.dev"
 };
 
@@ -166,6 +167,10 @@ var I18N = {
     gasDepositBtn: "Deposit gas money",
     gasWithdrawLabel: "Take back unused gas money ([42])",
     gasWithdrawBtn: "Take back",
+    v1Title: "Gas money left on the old version",
+    v1Note: "Gas money you deposited on the previous version (v1). The current auto-swap does not use it. Taking it back returns it to your wallet.",
+    v1CreditLabel: "Left on the old version (v1)",
+    v1WithdrawBtn: "Take it all back",
     badGasAmount: "Please enter an amount above 0.",
     stopTitle: "Stop the service",
     disableBtn: "Turn OFF auto-swap",
@@ -316,6 +321,10 @@ var I18N = {
     gasDepositBtn: "ガス代を預ける",
     gasWithdrawLabel: "余ったガス代を取り戻す（[42]）",
     gasWithdrawBtn: "取り戻す",
+    v1Title: "旧バージョンに残っているガス代",
+    v1Note: "前のバージョン（v1）に預けたままのガス代です。今の自動スワップでは使いません。取り戻すと、あなたのウォレットに戻ります。",
+    v1CreditLabel: "旧バージョン（v1）の残り",
+    v1WithdrawBtn: "全額取り戻す",
     badGasAmount: "0 より大きい金額を入れてください。",
     stopTitle: "サービスを止める",
     disableBtn: "自動交換を OFF にする",
@@ -977,6 +986,10 @@ function applyI18n() {
   setText("gasDepositBtn", "gasDepositBtn");
   setText("gasWithdrawLabel", "gasWithdrawLabel");
   setText("gasWithdrawBtn", "gasWithdrawBtn");
+  setText("v1Title", "v1Title");
+  setText("v1Note", "v1Note");
+  setText("v1CreditLabel", "v1CreditLabel");
+  setText("v1WithdrawBtn", "v1WithdrawBtn");
   setText("stopTitle", "stopTitle");
   setText("disableBtn", "disableBtn");
   setText("revokeBtn", "revokeBtn");
@@ -1109,7 +1122,29 @@ async function loadOnChain() {
   } else {
     renderMyStatus();
   }
+  loadV1Credit();
   loadHistory();
+}
+
+/* Gas money left on the retired v1 contract. Read-only until the
+   user taps the button; the withdrawal itself is an ordinary
+   withdrawGas call to the v1 address, signed by the user's wallet —
+   the credit can only ever move to its owner, by contract design. */
+async function loadV1Credit() {
+  var panel = el("v1Panel");
+  if (!account) { panel.hidden = true; return; }
+  try {
+    var out = await ethCall(CONFIG.V1_CONTRACT_ADDRESS, SEL.gasCredit + encodeAddress(account));
+    v1Credit = decodeUint(out);
+    if (v1Credit > 0n) {
+      el("v1Credit").textContent = formatToken(v1Credit) + " [42]";
+      panel.hidden = false;
+    } else {
+      panel.hidden = true;
+    }
+  } catch (e) {
+    panel.hidden = true;
+  }
 }
 
 function renderConfig(allowance) {
@@ -1291,6 +1326,7 @@ async function loadServiceStatus() {
 var lastGasCredit = null;
 var lastGasStipend = null;
 var lastAllowance = null;
+var v1Credit = null;
 var targetSymbolCache = {};
 
 /* The target token's symbol, read from the token contract itself
@@ -1662,6 +1698,17 @@ function init() {
     res.textContent = t("sending");
     try {
       await sendTx(CONFIG.CONTRACT_ADDRESS, SEL.withdrawGas + encodeUint(amount), res);
+      loadOnChain();
+    } catch (e) { txError(res, e); }
+  });
+
+  el("v1WithdrawBtn").addEventListener("click", async function () {
+    var res = el("v1Result");
+    if (!account) { res.textContent = t("needConnect"); return; }
+    if (v1Credit === null || v1Credit <= 0n) return;
+    res.textContent = t("sending");
+    try {
+      await sendTx(CONFIG.V1_CONTRACT_ADDRESS, SEL.withdrawGas + encodeUint(v1Credit), res);
       loadOnChain();
     } catch (e) { txError(res, e); }
   });

@@ -142,7 +142,7 @@ function mockProvider(opts = {}) {
 /* ---------- environment ---------- */
 const INITIALLY_HIDDEN = [
   "noWalletPanel", "accountBox", "dropPanel", "histPanel", "myStatusPanel",
-  "connectBtnList", "switchChainBtn", "customBox", "gasWarn", "statusReason",
+  "connectBtnList", "switchChainBtn", "customBox", "gasWarn", "statusReason", "v1Panel",
   "myStatusNote", "comingSoon",
 ];
 function buildEnv(lang) {

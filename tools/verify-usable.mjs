@@ -75,6 +75,10 @@ function rpcResult(method, params) {
       return { number: "0x1000", timestamp: "0x" + Math.floor(Date.now() / 1000).toString(16) };
     case "eth_call": {
       const data = (params && params[0] && params[0].data) || "";
+      const to = ((params && params[0] && params[0].to) || "").toLowerCase();
+      // The retired v1 contract still holds a 0.5 [42] gas credit.
+      if (to === "0x478bd3bbd12b906a83c803aa6c14684d150ab994" && data.indexOf("0x894912ac") === 0)
+        return "0x" + (500000000000000000n).toString(16).padStart(64, "0");
       // The approve-button state sync reads the FISH allowance: give
       // the test account a real one (2000 FISH) to exercise it.
       if (data.indexOf("0xdd62ed3e") === 0) return "0x" + (2000n * (10n ** 18n)).toString(16).padStart(64, "0");
@@ -100,7 +104,7 @@ async function fetchStub(url, opts) {
 
 const INITIALLY_HIDDEN = [
   "noWalletPanel", "accountBox", "dropPanel", "histPanel", "myStatusPanel",
-  "connectBtnList", "switchChainBtn", "customBox", "gasWarn", "statusReason",
+  "connectBtnList", "switchChainBtn", "customBox", "gasWarn", "statusReason", "v1Panel",
   "myStatusNote", "comingSoon",
 ];
 function buildEnv(lang) {
@@ -146,7 +150,7 @@ for (const lang of ["en", "ja"]) {
   assert(html.includes('id="maintenancePanel"'), lang + ".html: note banner panel present");
   assert(html.includes('id="maintenanceTitle"'), lang + ".html: banner title element present");
   assert(html.includes('id="maintenanceText"'), lang + ".html: banner text element present");
-  assert(html.includes("app.js?v=11"), lang + ".html: cache-buster bumped to v=11");
+  assert(html.includes("app.js?v=12"), lang + ".html: cache-buster bumped to v=12");
 }
 
 const NOTE = {
@@ -247,6 +251,22 @@ async function testUsable(lang) {
   assert(String(tx.data).startsWith("0x91657544"),
     lang + ": withdrawal calls withdrawGas (0x91657544): " + String(tx.data).slice(0, 10));
   assert(String(tx.to).toLowerCase() === CONTRACT, lang + ": withdrawal targets the AutoSwap contract");
+
+  // v1 leftover: the panel shows the retired contract's credit and
+  // its button withdraws the full amount from the v1 address.
+  assert(E("v1Panel").hidden === false, lang + ": v1 leftover panel shown");
+  assert(E("v1Credit").textContent === "0.5 [42]", lang + ": v1 credit shown: " + E("v1Credit").textContent);
+  sentTxs.length = 0;
+  E("v1WithdrawBtn").click();
+  await flush(3800);
+  assert(sentTxs.length === 1, lang + ": v1 withdrawal sent exactly one transaction");
+  tx = sentTxs[0];
+  assert(String(tx.data).startsWith("0x91657544"),
+    lang + ": v1 withdrawal calls withdrawGas (0x91657544): " + String(tx.data).slice(0, 10));
+  assert(String(tx.to).toLowerCase() === "0x478bd3bbd12b906a83c803aa6c14684d150ab994",
+    lang + ": v1 withdrawal targets the v1 contract");
+  assert(BigInt("0x" + String(tx.data).slice(10)) === 500000000000000000n,
+    lang + ": v1 withdrawal takes the full 0.5 [42]");
 }
 
 await testUsable("en");
