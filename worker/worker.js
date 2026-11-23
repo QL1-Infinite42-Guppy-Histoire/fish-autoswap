@@ -375,13 +375,46 @@ async function waitReceipt(env, txHash, timeoutMs = 120000) {
 async function runAll(env, source) {
   const summary = { source, ran: false, executed: [], skipped: [], failed: [] };
   const kv = env.AUTOSWAP_KV || null;
+  // Run lock (audit fix 2026-11-24): two cron schedules fire at
+  // 00:10 UTC ("10 0 * * *" and the */10 retry), and a long run can
+  // overlap the next retry tick. Overlapping runs could both pass
+  // the executedToday check and both send execute(); the contract
+  // rejects the second (once per user per day), but the keeper
+  // would pay gas for a reverting transaction and the history would
+  // gain a bogus "failed" record. This KV lock serializes runs. It
+  // is deliberately FAIL-OPEN: any KV error lets the run proceed
+  // (the contract's once-per-day rule stays the hard guarantee),
+  // and the TTL (480s) is shorter than the 10-minute retry interval
+  // so a crashed run blocks at most one retry tick. KV get+put is
+  // not atomic, so two runs starting in the same instant can still
+  // slip through together — the lock removes the realistic overlap
+  // (a run still going when the next tick fires), not the theory.
+  let lockState = "unavailable";
+  if (kv) {
+    try {
+      if (await kv.get("runlock")) lockState = "busy";
+      else {
+        await kv.put("runlock", String(Date.now()), { expirationTtl: 480 });
+        lockState = "acquired";
+      }
+    } catch (e) {
+      lockState = "unavailable"; // fail-open
+    }
+  }
   // Every exit goes through finish() so the run-level outcome always
   // lands in KV ("runlog:") — including the not-ready and error
   // outcomes that used to exist only in the cron console log.
   const finish = async (s) => {
+    if (lockState === "acquired" && kv) {
+      try { await kv.delete("runlock"); } catch (e) { /* TTL cleans up */ }
+    }
     await logRun(kv, s);
     return s;
   };
+  if (lockState === "busy") {
+    summary.reason = "locked: another run is in progress";
+    return finish(summary);
+  }
   const contract = contractAddress(env);
   const wallet = keeperWallet(env);
   if (!contract) {

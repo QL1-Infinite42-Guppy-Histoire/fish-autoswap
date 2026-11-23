@@ -5,8 +5,10 @@
 var CHAIN_ID_HEX = "0x66c9a"; // 421018
 var RPCS = [
   "https://evm-rpc.infinitedrive.xyz",
-  "https://evm-rpc-infinite.mschihuahua.org",
-  "https://evm-rpc-infinitepanda.xyz"
+  "https://evm-rpc-infinite.mschihuahua.org"
+  // evm-rpc-infinitepanda.xyz removed 2026-11-24 (audit): dead since
+  // at least 2026-11-09; already removed from app.js and the Worker
+  // on 2026-11-19 — admin.js was missed then.
 ];
 var EXPLORER = "https://scan.infinitedrive.xyz";
 var SEL = {
