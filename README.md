@@ -15,8 +15,8 @@ A service that swaps the FISH you receive every morning (~09:06 Japan time, the 
    **Register (once)** — On the site you connect your wallet and put three things on-chain: ① a capped FISH allowance (approve) for the contract, ② your settings (target token, percent, daily cap, slippage), ③ a small [42] gas pre-deposit (below).
    **ガス代は本人が事前に預ける方式** — 毎朝の実行のガス代は、利用者本人が [42] をコントラクトに預けて払います。交換が成功した実行のたびに、預かりから「1回分」（`gasStipend`、初期値 0.005 [42]、サイトに実値を表示）ちょうどがキーパーへ渡ります。失敗した実行では何も引かれません。余った預かり金は本人がいつでも全額取り戻せます（`withdrawGas`）。運営者は利用者のガス代を肩代わりしません。
    **Gas is prepaid by each user** — Every user funds their own morning runs by depositing [42] into the contract. Each *successful* run moves exactly one `gasStipend` (default 0.005 [42]; the live value is read from the contract and shown on the site) from that user's credit to the keeper. A failed run charges nothing. Unused credit is withdrawable by its owner at any time (`withdrawGas`). The operator never pays users' gas.
-3. **自動交換（09:10 JST）** — Cloudflare Worker のキーパーが毎日 00:10 UTC にコントラクトの `execute()` を呼びます。当日 mint された FISH 量はチェーンの Transfer ログ（from = 0x0）から数え、経路は factory で実在確認してから実行します。
-   **Auto-swap (09:10 JST)** — A keeper (Cloudflare Worker cron `10 0 * * *`) calls the contract's `execute()` every day at 00:10 UTC. The day's minted amount is measured from Transfer logs (from = the zero address); the path is verified against the factory before sending.
+3. **自動交換（09:10 JST）** — Cloudflare Worker のキーパーが毎日 00:10 UTC にコントラクトの `execute()` を呼びます。当日 mint された FISH 量はチェーンの Transfer ログ（from = 0x0）から数え、経路は factory で実在確認してから実行します。失敗した場合は10分ごとの Cron で再試行します（成功済みの利用者はコントラクトの1日1回制限で自動的にスキップされます）。
+   **Auto-swap (09:10 JST)** — A keeper (Cloudflare Worker cron `10 0 * * *`) calls the contract's `execute()` every day at 00:10 UTC. The day's minted amount is measured from Transfer logs (from = the zero address); the path is verified against the factory before sending. Failures are retried on a second cron (`*/10 * * * *`, every 10 minutes); users already done are skipped by the contract's once-per-day rule.
 
 ## 信頼モデル / Trust model
 
@@ -45,7 +45,7 @@ The contract is deliberately small:
 | パス | 内容 |
 |---|---|
 | `contracts/FishAutoSwap.sol` | 本体コントラクト（Solidity 0.8、外部依存なし） |
-| `contracts/build/FishAutoSwap.json` | コンパイル済み ABI + バイトコード（solc 0.8.38、8,842 bytes） |
+| `contracts/build/FishAutoSwap.json` | コンパイル済み ABI + バイトコード（solc 0.8.38、ランタイム 9,187 bytes） |
 | `worker/worker.js` | キーパー Worker（Cron 00:10 UTC、履歴は KV） |
 | `docs/` | 登録サイト（GitHub Pages、英語デフォルト＋日本語、`admin.html` は管理者のデプロイ用） |
 | `tools/` | コンパイル（`compile.mjs`）、ローカル EVM スモークテスト（`smoke-test.mjs`）、サイト読み取り検証（`verify-site-reads.mjs`） |
@@ -78,6 +78,8 @@ python3 ~/workspace/custom-connectors/custom.cloudflare/bin/cf.py deploy-bind \
   <ACCOUNT_ID> fish-autoswap dist/worker.bundle.js bindings.json
 python3 ~/workspace/custom-connectors/custom.cloudflare/bin/cf.py put-schedules \
   <ACCOUNT_ID> fish-autoswap "10 0 * * *"
+python3 ~/workspace/custom-connectors/custom.cloudflare/bin/cf.py put-schedules \
+  <ACCOUNT_ID> fish-autoswap "*/10 * * * *"
 ```
 
 注意：再デプロイ後は Cloudflare ダッシュボードで Secret（`KEEPER_PRIVATE_KEY` 等）が残っているか必ず確認してください。
@@ -86,15 +88,15 @@ Note: after redeploying, verify in the dashboard that the secrets are still pres
 ## テスト / Testing
 
 - コントラクト: `cd tools && npm install && node compile.mjs` でコンパイル。`node smoke-test.mjs` でローカル EVM（ganache）上にモックの FISH / ルーター / ファクトリーを実アドレスへ配置し、登録→実行・1日1回制限・上限・無効化・一時停止・経路検証に加えて、ガス預かり方式の検証（入金で残高が増える／実行で stipend ちょうどがキーパーに渡り残高が減る／残高不足では revert して何も引かれない／失敗したスワップでは引かれない／出金は本人の分だけ・上限超えは revert／他人の預かり金には届かない／stipend の上限キャップ）を含む **49項目すべて合格**。
-- サイト読み取り: `node verify-site-reads.mjs` で「今日の配布」集計がエクスプローラーの実績値と wei 単位で一致することを確認済み。
+- サイト読み取り: `node verify-site-reads.mjs` で「今日の配布」集計がエクスプローラーの実績値と wei 単位で一致することを 2026-11-07 時点で確認済み（一回性の検証スクリプト）。
 - 登録済みアドレスボード: サイトに全登録者の一覧（アドレス・交換先トークン・有効/停止中・割合）を公開表示（ウォレット未接続でも閲覧可）。`node tools/verify-board.mjs` で描画結果が実チェーンと一致することを確認済み。
-- ウォレット接続UX: `node tools/verify-wallet-ux.mjs` でモックプロバイダを使い8シナリオ検証済み（ウォレット無し時の MetaMask ディープリンク／URLコピー、自動再接続、チェーン違い時の切替ボタン、接続待ち表示と二重タップ防止、複数プロバイダの候補別ボタンと選択先への送受信、500ms 遅延注入の拾い上げ、FoxWallet のみの環境、EIP-6963 発見）。
+- ウォレット接続UX: `node tools/verify-wallet-ux.mjs` でモックプロバイダを使い12シナリオ検証済み（ウォレット無しでもボタン常時表示・案内はクリック時／自動再接続、チェーン違い時の切替ボタン、接続待ち表示と二重タップ防止、複数プロバイダの候補別ボタンと選択先への送受信、500ms 遅延注入の拾い上げ、検知窓を過ぎた注入のクリック時再検知、FoxWallet のみの環境、EIP-6963 発見、接続解除ダイアログと権限取り消し、取り消し非対応ウォレットでのローカル解除）。
 - Worker: デプロイ済み。`CONTRACT_ADDRESS` 未設定の間は `/status` が `not_ready` を返し、Cron が来ても何もしません。
 
 - Contract: compile with `node compile.mjs`; `node smoke-test.mjs` runs **49 checks, all passing**, on a local ganache chain with mocks placed at the real mainnet addresses — register → execute, once-per-day gate, cap, disable, pause, path validation, plus the gas pre-deposit model (deposit credits the exact amount; a successful execute pays exactly one stipend to the keeper and deducts it; insufficient credit reverts and charges nothing; a failed swap charges nothing; withdrawals return only the caller's own credit and cannot exceed it; another user cannot reach your credit; the stipend setter is owner-only and hard-capped).
-- Site reads: `verify-site-reads.mjs` confirmed the "today's drop" total matches the explorer's record to the wei.
+- Site reads: `verify-site-reads.mjs` confirmed the "today's drop" total matches the explorer's record to the wei, as of 2026-11-07 (a one-off dated check).
 - Registered-addresses board: the site publicly lists every registered address with its chosen token, active/paused state and share (no wallet connection needed); `verify-board.mjs` checks the rendered board against the live chain.
-- Wallet-connection UX: `verify-wallet-ux.mjs` exercises 8 mock-provider scenarios — no-wallet deep link / URL copy, auto-reconnect, wrong-chain switch button, pending state with repeat-tap guard, per-provider buttons with requests/transactions routed to the chosen one, a provider injected 500ms late, a FoxWallet-only environment, and EIP-6963 discovery.
+- Wallet-connection UX: `verify-wallet-ux.mjs` exercises 12 mock-provider scenarios — connect button always visible with guidance only on click, auto-reconnect, wrong-chain switch button, pending state with repeat-tap guard, per-provider buttons with requests/transactions routed to the chosen one, a provider injected 500ms late, click-time re-detection of a provider injected after the detection window, a FoxWallet-only environment, EIP-6963 discovery, the disconnect dialog with permission revocation, and local-only disconnect on wallets without revoke support.
 - Worker: deployed; while `CONTRACT_ADDRESS` is unset, `/status` answers `not_ready` and the daily cron does nothing.
 
 ## 開発メモ / Development notes
