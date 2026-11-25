@@ -831,17 +831,39 @@ async function tryAutoReconnect() {
 }
 
 async function setupWallet() {
+  // The connect button is ALWAYS shown (2026-11-25 spec): wallet
+  // in-app browsers sometimes inject their provider late — or the
+  // detection simply misses — and swapping the button for a
+  // full "no wallet" panel left users with no way in. The button
+  // stands from the start; detection is retried at click time
+  // (see the connectBtn handler), and the guidance panel appears
+  // only when a click finds genuinely nothing.
+  buildConnectButtons(candidateProviders());
   var found = await waitForAnyProvider(3000);
   var cands = candidateProviders();
-  if (!found || !cands.length) {
-    el("noWalletPanel").hidden = false;
-    el("connectPanel").hidden = true;
-    return;
-  }
+  if (!found || !cands.length) return; // button stands; clicks re-detect
   selectedProvider = pickDefaultProvider(cands);
   attachProviderListeners(selectedProvider);
   buildConnectButtons(cands);
+  el("noWalletPanel").hidden = true;
   tryAutoReconnect();
+}
+
+/* Re-run provider discovery at click time: a wallet browser may
+   have injected its provider after page load (or after the initial
+   detection window closed). Returns the provider to connect with,
+   or null when there is genuinely no wallet right now. */
+function rediscoverProvider() {
+  var cands = candidateProviders();
+  if (!cands.length) return null;
+  var stillThere = selectedProvider && cands.some(function (c) {
+    return c.provider === selectedProvider;
+  });
+  if (!stillThere) selectedProvider = pickDefaultProvider(cands);
+  attachProviderListeners(selectedProvider);
+  buildConnectButtons(cands);
+  el("noWalletPanel").hidden = true;
+  return selectedProvider;
 }
 
 async function copyPageUrl() {
@@ -1543,7 +1565,17 @@ function init() {
   el("copyUrlBtn").addEventListener("click", copyPageUrl);
 
   el("connectBtn").addEventListener("click", function () {
-    connectWith(provider(), el("connectBtn"));
+    if (account) return;
+    // Detect at click time, not just at load: wallet in-app
+    // browsers often inject late, so re-run discovery now. Only a
+    // click that still finds nothing shows the guidance panel —
+    // and the button stays either way (2026-11-25 spec).
+    var p = rediscoverProvider() || provider();
+    if (!p) {
+      el("noWalletPanel").hidden = false;
+      return;
+    }
+    connectWith(p, el("connectBtn"));
   });
 
   /* Tapping the connected address opens a small dialog with a

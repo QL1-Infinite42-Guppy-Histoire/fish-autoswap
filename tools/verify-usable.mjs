@@ -2,7 +2,7 @@
 // History: usable-with-maintenance-note from 2026-11-19; maintenance
 // ENDED by owner decision on 2026-11-20 after the first successful
 // live auto-swap, and the note banner was removed entirely:
-//   - neither HTML file carries the retired banner panel (app.js?v=14)
+//   - neither HTML file carries the retired banner panel (app.js?v=15)
 //   - with a connected wallet: every write button (approve / register /
 //     disable / revoke / gas deposit + its amount input) is ENABLED
 //   - the status banner follows the Worker status (running, green dot)
@@ -150,7 +150,7 @@ for (const lang of ["en", "ja"]) {
   const html = readFileSync(new URL("../docs/" + lang + ".html", import.meta.url), "utf8");
   assert(!html.includes('id="maintenancePanel"'), lang + ".html: maintenance banner panel removed");
   assert(!html.includes('id="maintenanceText"'), lang + ".html: banner text element removed");
-  assert(html.includes("app.js?v=14"), lang + ".html: cache-buster bumped to v=14");
+  assert(html.includes("app.js?v=15"), lang + ".html: cache-buster bumped to v=15");
 }
 const CONTRACT = "0x67e99d8a7bf5f71370391732847e038578f1290d";
 

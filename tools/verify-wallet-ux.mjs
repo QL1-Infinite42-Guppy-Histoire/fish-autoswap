@@ -1,6 +1,8 @@
 // Exercise the wallet-connection UX of docs/app.js in a fake DOM:
-//   1. no provider (ja + en) -> no-wallet panel with a correctly built
-//      metamask.app.link deep link + a working copy-URL fallback
+//   1. no provider (ja + en) -> the connect button STAYS visible
+//      (2026-11-25 spec: never swapped away for a "no wallet" panel);
+//      the guidance panel with the metamask.app.link deep link + the
+//      copy-URL fallback appears only after a click finds nothing
 //   2. eth_accounts auto-reconnect restores the session without a tap
 //   3. auto-reconnect on the wrong chain -> switch button, no auto-switch
 //   4. single provider -> one button, "check your wallet app" pending
@@ -208,12 +210,20 @@ async function testNoProvider(lang) {
   const { els, documentStub } = buildEnv(lang);
   documentStub._fireReady();
   await flush(3400); // the full ~3s late-injection wait window
-  assert(els.noWalletPanel.hidden === false, lang + ": no-wallet panel shown");
-  assert(els.connectPanel.hidden === true, lang + ": connect panel hidden");
+  assert(documentStub.getElementById("connectPanel").hidden === false,
+    lang + ": connect panel stays visible with no wallet");
+  assert(els.connectBtn.hidden === false, lang + ": connect button stays visible");
+  assert(els.noWalletPanel.hidden === true, lang + ": guidance hidden until a click finds nothing");
   const want = "https://metamask.app.link/dapp/h.test/fish-autoswap/" + lang + ".html";
   assert(els.mmOpenLink.href === want, lang + ": deep link = " + els.mmOpenLink.href);
   assert(els.mmOpenLink.textContent.length > 0, lang + ": MetaMask button labelled");
   assert(els.copyUrlBtn.textContent.length > 0, lang + ": copy button labelled");
+  els.connectBtn.click(); // click-time detection: still nothing -> guidance
+  await flush(100);
+  assert(els.noWalletPanel.hidden === false, lang + ": guidance shown after a click finds no wallet");
+  assert(documentStub.getElementById("connectPanel").hidden === false,
+    lang + ": connect panel STILL visible with the guidance up");
+  assert(els.connectBtn.hidden === false, lang + ": connect button STILL visible");
   if (lang === "en") {
     els.copyUrlBtn.click(); // clipboard API absent -> textarea fallback (execCommand stub)
     await flush(100);
@@ -328,13 +338,33 @@ async function testLateInjection() {
   const ADDR = "0x5555555555555555555555555555555555555555";
   const env = buildEnv("ja");
   env.documentStub._fireReady();
+  await flush(150);
+  assert(env.els.connectBtn.hidden === false, "connect button visible BEFORE any injection");
   const mm = mockProvider({ isMetaMask: true, accounts: [ADDR] });
-  setTimeout(() => { env.sandbox.ethereum = mm; }, 500);
+  setTimeout(() => { env.sandbox.ethereum = mm; }, 350);
   await flush(2000);
-  assert(env.els.noWalletPanel.hidden === true, "no-wallet panel never shown");
+  assert(env.els.noWalletPanel.hidden === true, "no-wallet guidance never shown");
   assert(env.documentStub.getElementById("connectPanel").hidden === false, "connect panel available");
   assert(mm.calls.includes("eth_accounts"), "auto-reconnect ran for the late provider");
   assert(env.els.accountBox.hidden === false, "session restored without a reload");
+}
+
+async function testClickRediscoversLateProvider() {
+  console.log("scenario: provider injected AFTER the detection window -> click re-detects");
+  const ADDR = "0x9999999999999999999999999999999999999999";
+  const env = buildEnv("ja");
+  env.documentStub._fireReady();
+  const mm = mockProvider({ isMetaMask: true, requestAccounts: [ADDR] });
+  setTimeout(() => { env.sandbox.ethereum = mm; }, 3600); // after the ~3s window closed
+  await flush(4200);
+  assert(env.els.accountBox.hidden === true, "nothing auto-connects after the window");
+  assert(env.els.connectBtn.hidden === false, "connect button still standing");
+  assert(!mm.calls.includes("eth_requestAccounts"), "no request before the click");
+  env.els.connectBtn.click();
+  await flush(500);
+  assert(mm.calls.includes("eth_requestAccounts"), "click-time re-detection found the late provider");
+  assert(env.els.accountBox.hidden === false, "connected via the click after late injection");
+  assert(env.els.noWalletPanel.hidden === true, "guidance stayed hidden (a wallet WAS found)");
 }
 
 async function testFoxOnly() {
@@ -443,4 +473,5 @@ await testFoxOnly();
 await testEip6963();
 await testDisconnect();
 await testDisconnectNoRevokeSupport();
+await testClickRediscoversLateProvider();
 console.log("WALLET UX VERIFY OK — all scenarios passed.");
