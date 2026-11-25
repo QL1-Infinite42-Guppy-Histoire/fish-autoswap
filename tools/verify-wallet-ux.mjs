@@ -33,8 +33,11 @@ class FakeEl {
     this.style = {};
     this.value = "";
     this.href = "";
+    this.open = false;
     this._handlers = {};
   }
+  showModal() { this.open = true; }
+  close() { this.open = false; }
   set textContent(v) { this._text = String(v); this.children = []; }
   get textContent() {
     return this._text + this.children.map((c) => c.textContent).join("");
@@ -131,6 +134,12 @@ function mockProvider(opts = {}) {
           state.chainId = req.params[0].chainId;
           return Promise.resolve(null);
         case "eth_sendTransaction": return Promise.resolve("0x" + "cd".repeat(32));
+        case "wallet_revokePermissions":
+          if (opts.revokeSupport === false) {
+            return Promise.reject(Object.assign(new Error("unsupported"), { code: 4200 }));
+          }
+          state.accounts = []; // the permission is gone: eth_accounts now returns []
+          return Promise.resolve(null);
         default: return Promise.resolve(null);
       }
     },
@@ -371,6 +380,59 @@ async function testEip6963() {
   assert(a.calls.includes("eth_accounts"), "auto-reconnect probed the default announced provider");
 }
 
+async function testDisconnect() {
+  console.log("scenario: disconnect dialog + revokePermissions (QOM DEX parity)");
+  const ADDR = "0x7777777777777777777777777777777777777777";
+  const mm = mockProvider({ isMetaMask: true, accounts: [ADDR], requestAccounts: [ADDR] });
+  const env = buildEnv("ja");
+  env.sandbox.ethereum = mm;
+  env.documentStub._fireReady();
+  await flush(400);
+  assert(env.els.accountBox.hidden === false, "connected (auto-restored) before disconnect");
+  env.els.walletAddr.click();
+  await flush(50);
+  assert(env.els.connDlg.open === true, "tapping the connected address opens the dialog");
+  assert(env.els.connAddr.textContent === ADDR, "dialog shows the full address");
+  env.els.connClose.click();
+  assert(env.els.connDlg.open === false, "close button dismisses the dialog");
+  assert(env.els.accountBox.hidden === false, "closing alone does NOT disconnect");
+  env.els.walletAddr.click();
+  env.els.disconnectBtn.click();
+  await flush(200);
+  assert(mm.calls.includes("wallet_revokePermissions"), "wallet_revokePermissions requested");
+  assert(env.els.connDlg.open === false, "dialog closed after disconnect");
+  assert(env.els.accountBox.hidden === true, "account box hidden after disconnect");
+  assert(env.els.connectBox.hidden === false, "connect box back after disconnect");
+  assert(env.els.myStatusPanel.hidden === true, "status panel hidden after disconnect");
+  assert(env.els.dropPanel.hidden === true && env.els.histPanel.hidden === true,
+    "account-only panels hidden after disconnect");
+  // Reload with the SAME wallet: the revoke landed, so eth_accounts is
+  // empty and the session must NOT silently resurrect.
+  const env2 = buildEnv("ja");
+  env2.sandbox.ethereum = mm;
+  env2.documentStub._fireReady();
+  await flush(400);
+  assert(env2.els.accountBox.hidden === true, "no silent resurrection after reload (revoked)");
+  assert(env2.documentStub.getElementById("connectBox").hidden === false, "connect box offered after reload");
+}
+
+async function testDisconnectNoRevokeSupport() {
+  console.log("scenario: disconnect on a wallet without revoke support");
+  const ADDR = "0x8888888888888888888888888888888888888888";
+  const fox = mockProvider({ isFoxWallet: true, accounts: [ADDR], revokeSupport: false });
+  const env = buildEnv("en");
+  env.sandbox.ethereum = fox;
+  env.documentStub._fireReady();
+  await flush(400);
+  assert(env.els.accountBox.hidden === false, "connected before disconnect");
+  env.els.walletAddr.click();
+  env.els.disconnectBtn.click();
+  await flush(200);
+  assert(fox.calls.includes("wallet_revokePermissions"), "revoke attempted even when unsupported");
+  assert(env.els.accountBox.hidden === true, "local disconnect completed despite the rejection");
+  assert(env.els.connectBox.hidden === false, "connect box back (local-only disconnect)");
+}
+
 await Promise.all([testNoProvider("ja"), testNoProvider("en")]);
 await testAutoRestore();
 await testAutoRestoreWrongChain();
@@ -379,4 +441,6 @@ await testMultiProvider();
 await testLateInjection();
 await testFoxOnly();
 await testEip6963();
+await testDisconnect();
+await testDisconnectNoRevokeSupport();
 console.log("WALLET UX VERIFY OK — all scenarios passed.");

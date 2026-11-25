@@ -116,6 +116,8 @@ var I18N = {
     urlCopied: "Copied! Open your wallet app and paste the URL into its browser.",
     urlCopyFail: "Could not copy automatically — please copy this URL by hand: ",
     connectBtn: "Connect wallet",
+    connectedTitle: "Wallet connected",
+    disconnectBtn: "Disconnect",
     connectWithBtn: "Connect with {name}",
     walletGeneric: "Wallet",
     checkingWallet: "Check your wallet app…",
@@ -268,6 +270,8 @@ var I18N = {
     urlCopied: "コピーしました！ウォレットアプリを開いて、その中のブラウザに貼り付けてください。",
     urlCopyFail: "自動でコピーできませんでした。このURLを手でコピーしてください： ",
     connectBtn: "ウォレットをつなぐ",
+    connectedTitle: "ウォレット接続中",
+    disconnectBtn: "接続を解除",
     connectWithBtn: "{name} でつなぐ",
     walletGeneric: "ウォレット",
     checkingWallet: "ウォレットアプリで確認してください…",
@@ -958,6 +962,8 @@ function applyI18n() {
   setText("mmOpenLink", "openMetaMaskBtn");
   setText("copyUrlBtn", "copyUrlBtn");
   setText("connectBtn", "connectBtn");
+  setText("connTitle", "connectedTitle");
+  setText("disconnectBtn", "disconnectBtn");
   setText("connectNote", "connectNote");
   setText("yourWalletLabel", "yourWalletLabel");
   setText("rescanBtn", "rescanBtn");
@@ -1540,6 +1546,38 @@ function init() {
     connectWith(provider(), el("connectBtn"));
   });
 
+  /* Tapping the connected address opens a small dialog with a
+     Disconnect choice (same flow as the QOM DEX, unified
+     2026-11-25). Disconnect asks the wallet to revoke this site's
+     account permission where it supports it (MetaMask:
+     wallet_revokePermissions) so a reload does not silently restore
+     the session; wallets without revoke support just lose the local
+     session. */
+  el("walletAddr").addEventListener("click", function () {
+    if (!account) return;
+    el("connAddr").textContent = account;
+    var dlg = el("connDlg");
+    if (dlg && typeof dlg.showModal === "function") dlg.showModal();
+  });
+  el("connClose").addEventListener("click", function () {
+    var dlg = el("connDlg");
+    if (dlg && typeof dlg.close === "function") dlg.close();
+  });
+  el("disconnectBtn").addEventListener("click", async function () {
+    var p = provider();
+    if (p) {
+      try {
+        await p.request({
+          method: "wallet_revokePermissions",
+          params: [{ eth_accounts: {} }],
+        });
+      } catch (e) { /* wallet without revoke support: local disconnect only */ }
+    }
+    disconnectLocal();
+    var dlg = el("connDlg");
+    if (dlg && typeof dlg.close === "function") dlg.close();
+  });
+
   /* Providers (FoxWallet included) may inject late — wait briefly
      before deciding there is no wallet at all. */
   setupWallet();
@@ -1785,6 +1823,32 @@ function syncApproveDefault() {
   var cap = parseToken(el("capInput").value);
   if (cap === null) return;
   amt.value = formatToken(cap * 30n);
+}
+
+/* Disconnect (unified with the QOM DEX on 2026-11-25): clear the
+   local session so the UI returns to the exact pre-connect state —
+   the connect box comes back, the account-only panels hide, and the
+   settings summary returns to its connect-first note. */
+function disconnectLocal() {
+  account = null;
+  el("connectBox").hidden = false;
+  el("accountBox").hidden = true;
+  el("myStatusPanel").hidden = true;
+  el("dropPanel").hidden = true;
+  el("histPanel").hidden = true;
+  var v1 = el("v1Panel");
+  if (v1) v1.hidden = true;
+  el("connectResult").textContent = "";
+  var box = el("currentBody");
+  box.innerHTML = "";
+  var s = document.createElement("span");
+  s.id = "connectFirstNote";
+  s.textContent = t("connectFirst");
+  box.appendChild(s);
+  el("executedLine").textContent = "";
+  lastAllowance = null;
+  syncApproveBtn();
+  loadBoard();
 }
 
 function showAccount() {

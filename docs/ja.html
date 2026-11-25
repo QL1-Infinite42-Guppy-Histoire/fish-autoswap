@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@500;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 <header>
@@ -81,7 +81,7 @@
     </div>
     <div id="accountBox" hidden>
       <div class="i-label" id="yourWalletLabel">Your wallet</div>
-      <div class="mono" id="walletAddr">—</div>
+      <button type="button" id="walletAddr" class="addr-btn mono">—</button>
       <div class="row">
         <button type="button" id="rescanBtn" class="small-btn">Check again</button>
       </div>
@@ -89,6 +89,16 @@
     <p class="result" id="connectResult" role="status"></p>
     <button type="button" id="switchChainBtn" class="big-btn secondary" hidden>Switch to 42 Chain</button>
   </section>
+
+  <!-- Connected-wallet dialog: full address + disconnect -->
+  <dialog id="connDlg">
+    <h3 id="connTitle">Wallet connected</h3>
+    <p class="mono" id="connAddr">—</p>
+    <div class="row">
+      <button type="button" id="disconnectBtn" class="big-btn danger">Disconnect</button>
+      <button type="button" id="connClose" class="small-btn">✕</button>
+    </div>
+  </dialog>
 
   <!-- Your running status -->
   <section class="panel" id="myStatusPanel" hidden>
@@ -288,7 +298,7 @@
   <p><a href="admin.html" id="ownerLink">Owner</a></p>
 </footer>
 
-<script src="app.js?v=13"></script>
+<script src="app.js?v=14"></script>
 <script>
 (function(){
   var btn=document.getElementById("themeToggle");

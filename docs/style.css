@@ -46,6 +46,15 @@ main { max-width: 1120px; margin: 0 auto; padding: 0 20px 8px; }
 .big-btn.claim:active { transform: translateY(4px); box-shadow: 0 1px 0 #065f46, 0 4px 8px rgba(22,163,74,.3), inset 0 1px 0 rgba(255,255,255,.3); }
 .big-btn.claim:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 .big-btn.secondary { background: linear-gradient(180deg, var(--accent-2), var(--accent) 55%, var(--accent-d)); font-size: 17px; padding: 14px 16px; min-height: 52px; }
+.big-btn.danger { background: linear-gradient(180deg, #f87171, var(--red) 55%, var(--red-d)); border-color: var(--red-d); box-shadow: 0 5px 0 var(--red-d), 0 10px 18px rgba(220, 38, 38, .35), inset 0 1px 0 rgba(255, 255, 255, .45); }
+.big-btn.danger:active { box-shadow: 0 1px 0 var(--red-d), 0 4px 8px rgba(220, 38, 38, .3), inset 0 1px 0 rgba(255, 255, 255, .3); }
+.addr-btn { display: block; width: 100%; text-align: left; background: linear-gradient(180deg, var(--card), var(--panel)); color: var(--text); border: 1px solid var(--line-d); padding: 10px 12px; font-size: 15px; cursor: pointer; box-shadow: var(--shadow-chip); clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px); word-break: break-all; }
+.addr-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--line-d); }
+dialog { border: 1px solid var(--line-d); background: linear-gradient(175deg, var(--card), var(--panel)); color: var(--text); padding: 20px; width: min(420px, 92vw); box-shadow: var(--shadow-card); clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px); }
+dialog::backdrop { background: rgba(2, 8, 20, .55); }
+dialog .mono { word-break: break-all; }
+dialog .row { align-items: stretch; }
+dialog #disconnectBtn { flex: 1; }
 /* Wallet icon on the connect button: a CSS ::before flex item, so the
    label the app rewrites (textContent) never wipes it. */
 #connectBtn::before { content: ""; flex: none; width: 22px; height: 22px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12V7H5a2 2 0 0 1 0-4h14v4'/%3E%3Cpath d='M3 5v14a2 2 0 0 0 2 2h16v-5'/%3E%3Cpath d='M18 12a2 2 0 0 0 0 4h4v-4Z'/%3E%3C/svg%3E") center / contain no-repeat; }
