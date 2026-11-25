@@ -330,8 +330,8 @@ async function pairExists(env, a, b) {
   }
 }
 
-// Direct pair, else via the native [42] sentinel — same rule as
-// GuppyWallet's findPath. Returns null when no route exists.
+// Direct pair, else via the native [42] sentinel.
+// Returns null when no route exists.
 async function buildPath(env, fish, cfg) {
   const target = cfg.targetToken;
   if (target.toLowerCase() === fish.toLowerCase()) return null; // cannot swap FISH into FISH
